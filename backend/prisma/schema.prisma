@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Пользователь и деньги ----------
+
+model User {
+  id                     String            @id @default(cuid())
+  telegramId             String?           @unique
+  email                  String?           @unique
+  passwordHash           String? // null, пока человек не зарегистрировался — просто гостевой аккаунт
+  passwordResetTokenHash String?
+  passwordResetExpiresAt DateTime?
+  balanceKopeks          Int               @default(0) // баланс храним в копейках, без float
+  createdAt              DateTime          @default(now())
+
+  transactions      Transaction[]
+  purchasedReports  PurchasedReport[]
+  comparisons       Comparison[]
+  feedback          Feedback[]
+}
+
+enum FeedbackType {
+  INCORRECT_DATA // в отчёте что-то не так
+  SUGGESTION     // предложение добавить/поправить
+  SUPPORT        // техподдержка
+  OTHER
+}
+
+// Обратная связь — привязана к конкретной машине, если написано со страницы
+// отчёта (так проще проверить, о чём речь), но необязательно.
+model Feedback {
+  id            String        @id @default(cuid())
+  user          User?         @relation(fields: [userId], references: [id])
+  userId        String?
+  carVariantId  String?
+  type          FeedbackType
+  message        String
+  contactInfo   String? // email/телеграм, если человек хочет ответ
+  createdAt     DateTime      @default(now())
+
+  @@index([createdAt])
+}
+
+enum TransactionType {
+  TOPUP               // пополнение через ЮKassa
+  REPORT_PURCHASE      // списание за один отчёт
+  COMPARISON_PURCHASE  // списание за сравнение (сумма по всем машинам в сравнении)
+  REFUND
+}
+
+model Transaction {
+  id            String           @id @default(cuid())
+  user          User             @relation(fields: [userId], references: [id])
+  userId        String
+  type          TransactionType
+  amountKopeks  Int
+  provider      String?          // "yookassa", "internal"
+  externalId    String?          // id платежа в ЮKassa, для сверки по вебхуку
+  createdAt     DateTime         @default(now())
+
+  @@index([userId])
+  @@index([externalId])
+}
+
+// Копилка "известных вариантов" для пары бренд+модель — двигатели, кузова,
+// поколения. Наполняется автоматически как побочный продукт обычной
+// генерации отчёта (см. ReportsService.recordDiscoveredVariants): один
+// пользователь спросил Kia Rio 2013 — узнали про 3 поколение и 1.4 MPI,
+// другой спросил Kia Rio 2019 — добавилось 4 поколение и 1.6 MPI. TTL нет —
+// таксономия не устаревает так, как цена. Раз в N генераций можно
+// прогнать модерацию вручную, если понадобится.
+model CarCatalogEntry {
+  id                String   @id @default(cuid())
+  brand             String
+  model             String
+  knownGenerations  Json     @default("[]")
+  knownEngines      Json     @default("[]")
+  knownBodyTypes    Json     @default("[]")
+  minYearSeen       Int?
+  maxYearSeen       Int?
+  updatedAt         DateTime @updatedAt
+
+  @@unique([brand, model])
+}
+
+// ---------- Машины и кэш отчётов ----------
+
+// Нормализованный "паспорт" авто — ключ, по которому матчится кэш.
+// Нормализация (приведение марки/модели/года к единому виду) — отдельная
+// задача на стороне reports.service, чтобы "Рио" и "Kia Rio" не плодили дубли.
+model CarVariant {
+  id          String   @id @default(cuid())
+  brand       String
+  model       String
+  generation  String?
+  yearFrom    Int
+  yearTo      Int?
+  engine      String?  // например "1.6 MPI 123 л.с.", null = блок общий для всего поколения
+  bodyType    String?  // "седан" / "универсал" / "хетчбэк" и т.п., null = не уточнено
+
+  reports           CarReportBlock[]
+  purchasedReports  PurchasedReport[]
+
+  @@unique([brand, model, generation, yearFrom, yearTo, engine, bodyType])
+  @@index([brand, model])
+}
+
+enum ReportBlockType {
+  SPECS      // характеристики, двигатели, комплектации — TTL длинный (~12 мес)
+  PROBLEMS   // типичные болячки по году/мотору — TTL длинный (~6-12 мес)
+  COSTS      // ТО, запчасти, топливо в год — TTL средний (~3 мес)
+  INSURANCE  // ОСАГО/КАСКО, транспортный налог — TTL средний (~3-6 мес)
+  PRICE      // средняя цена на рынке — TTL короткий (~7-14 дней), самый волатильный блок
+}
+
+// Отчёт хранится не целиком, а блоками — у каждого блока свой TTL,
+// поэтому "цена" обновляется часто, а "характеристики" почти никогда.
+model CarReportBlock {
+  id            String          @id @default(cuid())
+  carVariant    CarVariant      @relation(fields: [carVariantId], references: [id])
+  carVariantId  String
+  type          ReportBlockType
+  content       Json            // структурированные данные блока (см. car-report.dto.ts)
+  sources       Json?           // URL источников — для внутреннего контроля качества, юзеру не показываем
+  aiModel       String?         // какой моделью сгенерирован блок
+  generatedAt   DateTime        @default(now())
+  expiresAt     DateTime
+  hitCount      Int             @default(0) // сколько раз отдан из кэша — метрика экономии
+
+  @@unique([carVariantId, type])
+  @@index([expiresAt])
+}
+
+// Факт покупки конкретного отчёта конкретным юзером — история в личном кабинете.
+// Не хранит копию контента: контент всегда берётся из актуального CarReportBlock,
+// но связь "юзер купил доступ к этой машине" остаётся навсегда.
+model PurchasedReport {
+  id            String      @id @default(cuid())
+  user          User        @relation(fields: [userId], references: [id])
+  userId        String
+  carVariant    CarVariant  @relation(fields: [carVariantId], references: [id])
+  carVariantId  String
+  purchasedAt   DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model Comparison {
+  id             String   @id @default(cuid())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
+  carVariantIds  Json     // массив id CarVariant, 3-5 штук по лимиту MVP
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}
