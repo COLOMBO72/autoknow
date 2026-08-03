@@ -18,6 +18,16 @@ export class AuthService {
     private readonly email: EmailService,
   ) {}
 
+  // БАГ, который поймали: без нормализации "Name@Gmail.com" и "name@gmail.com"
+  // считаются разными строками при поиске в БД — регистрация проходит,
+  // а вход с фактически тем же email не находит пользователя вообще
+  // (ошибка "неверный пароль" при этом сбивает с толку, хотя пароль
+  // до сравнения даже не доходит). Теперь email нормализуется ВЕЗДЕ,
+  // на любом входе в систему, единообразно.
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   private signToken(userId: string): string {
     const secret: string = this.config.getOrThrow('JWT_SECRET');
     return jwt.sign({ sub: userId }, secret, { expiresIn: '30d' });
@@ -38,7 +48,8 @@ export class AuthService {
    * к ЕГО аккаунту, чтобы не потерять баланс и историю. Если нет —
    * создаём нового пользователя с нуля.
    */
-  async register(email: string, password: string, existingUserId?: string) {
+  async register(rawEmail: string, password: string, existingUserId?: string) {
+    const email = this.normalizeEmail(rawEmail);
     const taken = await this.prisma.user.findUnique({ where: { email } });
     if (taken) throw new BadRequestException('Этот email уже зарегистрирован');
     if (password.length < 8) throw new BadRequestException('Пароль должен быть не короче 8 символов');
@@ -52,7 +63,8 @@ export class AuthService {
     return { userId: user.id, token: this.signToken(user.id) };
   }
 
-  async login(email: string, password: string) {
+  async login(rawEmail: string, password: string) {
+    const email = this.normalizeEmail(rawEmail);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) throw new UnauthorizedException('Неверный email или пароль');
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -60,7 +72,8 @@ export class AuthService {
     return { userId: user.id, token: this.signToken(user.id) };
   }
 
-  async requestPasswordReset(email: string) {
+  async requestPasswordReset(rawEmail: string) {
+    const email = this.normalizeEmail(rawEmail);
     const user = await this.prisma.user.findUnique({ where: { email } });
     // Намеренно не сообщаем, существует ли email — не подсказываем это извне.
     if (!user) return { ok: true };
@@ -77,7 +90,8 @@ export class AuthService {
     return { ok: true };
   }
 
-  async resetPassword(email: string, rawToken: string, newPassword: string) {
+  async resetPassword(rawEmail: string, rawToken: string, newPassword: string) {
+    const email = this.normalizeEmail(rawEmail);
     if (newPassword.length < 8) throw new BadRequestException('Пароль должен быть не короче 8 символов');
     const user = await this.prisma.user.findUnique({ where: { email } });
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -105,7 +119,8 @@ export class AuthService {
     return { ok: true };
   }
 
-  async changeEmail(userId: string, newEmail: string) {
+  async changeEmail(userId: string, rawNewEmail: string) {
+    const newEmail = this.normalizeEmail(rawNewEmail);
     const taken = await this.prisma.user.findUnique({ where: { email: newEmail } });
     if (taken) throw new BadRequestException('Этот email уже используется другим аккаунтом');
     await this.prisma.user.update({ where: { id: userId }, data: { email: newEmail } });

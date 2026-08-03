@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { TransactionType, Prisma } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { TransactionType, Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
@@ -34,21 +34,21 @@ export class UsersService {
     return this.prisma.purchasedReport.findMany({
       where: { userId },
       include: { carVariant: true },
-      orderBy: { purchasedAt: "desc" },
+      orderBy: { purchasedAt: 'desc' },
     });
   }
 
   async getComparisons(userId: string) {
     return this.prisma.comparison.findMany({
       where: { userId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async getTransactions(userId: string) {
     return this.prisma.transaction.findMany({
       where: { userId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -57,10 +57,7 @@ export class UsersService {
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
       if (user.balanceKopeks < amountKopeks) {
-        throw new BadRequestException({
-          code: "INSUFFICIENT_BALANCE",
-          message: "Недостаточно средств на балансе",
-        });
+        throw new BadRequestException({ code: 'INSUFFICIENT_BALANCE', message: 'Недостаточно средств на балансе' });
       }
       await tx.user.update({
         where: { id: userId },
@@ -72,19 +69,14 @@ export class UsersService {
     });
   }
 
-  async credit(
-    userId: string,
-    amountKopeks: number,
-    provider: string,
-    externalId: string,
-  ) {
+  async credit(userId: string, amountKopeks: number, provider: string, externalId: string) {
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.user.update({
         where: { id: userId },
         data: { balanceKopeks: { increment: amountKopeks } },
       });
       return tx.transaction.create({
-        data: { userId, amountKopeks, type: "TOPUP", provider, externalId },
+        data: { userId, amountKopeks, type: 'TOPUP', provider, externalId },
       });
     });
   }

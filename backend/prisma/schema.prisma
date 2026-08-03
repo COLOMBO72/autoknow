@@ -32,6 +32,23 @@ enum FeedbackType {
   OTHER
 }
 
+// Лог каждого обращения к AI-провайдеру — по нему видно, насколько
+// стабилен AITunnel (или любой другой агрегатор) и как часто срабатывает
+// fallback на запасного провайдера (например, OpenRouter).
+model AiCallLog {
+  id         String   @id @default(cuid())
+  provider   String   // "primary" | "fallback"
+  baseUrl    String   // на всякий случай храним, каким именно base_url стучались
+  model      String
+  success    Boolean
+  errorMessage String?
+  latencyMs  Int?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([provider, success])
+}
+
 // Обратная связь — привязана к конкретной машине, если написано со страницы
 // отчёта (так проще проверить, о чём речь), но необязательно.
 model Feedback {

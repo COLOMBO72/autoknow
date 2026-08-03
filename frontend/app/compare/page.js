@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { ensureUserId } from '../../lib/session';
 import { getCart, removeFromCart } from '../../lib/compareCart';
 import SiteFooter from '../../components/SiteFooter';
+import SiteHeader from '../../components/SiteHeader';
 
 const PARTS_RANK = { excellent: 3, good: 2, limited: 1, poor: 0 };
 const PARTS_LABEL = { excellent: 'отличная', good: 'хорошая', limited: 'ограниченная', poor: 'слабая' };
@@ -82,14 +83,7 @@ export default function ComparePage() {
         .ak-scroll::-webkit-scrollbar-thumb { background: ${tokens.line}; border-radius: 3px; }
         .ak-focus:focus-visible { outline: 2px solid ${tokens.blue}; outline-offset: 2px; }
       `}</style>
-      <header style={{ maxWidth: 1080, margin: '0 auto', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <a href="/" style={{ fontFamily: "'Anton', sans-serif", fontSize: 22, letterSpacing: '0.03em', textDecoration: 'none', color: tokens.ink }}>
-          AUTO<span style={{ color: tokens.red }}>KNOW</span>
-        </a>
-        <a href="/account" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: tokens.inkSoft, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '7px 14px', textDecoration: 'none' }}>
-          КАБИНЕТ
-        </a>
-      </header>
+      <SiteHeader />
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 60px' }}>{children}</main>
       <SiteFooter />
     </div>

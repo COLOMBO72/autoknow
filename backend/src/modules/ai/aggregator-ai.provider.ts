@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   AiProvider,
   StructuredGenerationRequest,
@@ -8,68 +9,110 @@ import {
 } from './ai-provider.interface';
 
 /**
- * Агрегаторы (aitunnel.ru и т.п.), совместимые с Responses API, отдают
- * тот же контракт, что и OpenAI — достаточно поменять baseURL и ключ.
+ * Теперь primary и fallback — ДВА НЕЗАВИСИМЫХ провайдера (например,
+ * AITunnel и OpenRouter), не просто вторая модель у того же агрегатора,
+ * как было раньше. Если у AITunnel авария целиком (не только конкретная
+ * модель) — fallback всё равно отработает, потому что бьёт совсем в другой
+ * base_url со своим ключом.
  *
- * ВАЖНО про архитектуру: этот файл отвечает ТОЛЬКО за "как заполнить кэш,
- * когда его нет". Проверка "может, у нас уже есть свежий отчёт по этой
- * машине — тогда вообще не платим" происходит раньше, в ReportsService,
- * и этот файл не трогает. Т.е. если 4 человека подряд спросят одну и ту же
- * машину — сюда доедет только первый запрос, остальные 3 отдаст кэш бесплатно.
+ * Каждый вызов (успешный и нет) пишется в AiCallLog — на этом строится
+ * админ-панель "здоровье AI" и решение "пора ли переезжать на другого
+ * агрегатора совсем".
  *
- * Используем Responses API (не Chat Completions) с включённым инструментом
- * web_search — модель реально ищет в интернете и сама пишет ответ своими
- * словами (без пересказа чужих статей построчно), это и есть механизм,
- * который убирает вопрос авторских прав и делает данные актуальными.
- *
- * Нюанс: у агрегатора Responses API может отставать от официального OpenAI
- * или иметь свои особенности — при первом реальном запуске стоит свериться
- * с документацией AITUNNEL и, если что-то не заведётся с первого раза,
- * логи здесь (this.logger.warn) покажут, на каком именно вызове упало.
+ * Fallback-провайдер настраивается опционально: если AI_FALLBACK_* не
+ * заданы в .env — просто нет второй попытки, только primary.
  */
 @Injectable()
 export class AggregatorAiProvider implements AiProvider {
   private readonly logger = new Logger(AggregatorAiProvider.name);
-  private readonly client: OpenAI;
-  private readonly primaryModel: string;
-  private readonly fallbackModel: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.client = new OpenAI({
-      baseURL: this.config.getOrThrow('AI_BASE_URL'),
-      apiKey: this.config.getOrThrow('AI_API_KEY'),
-    });
+  private readonly primaryClient: OpenAI;
+  private readonly primaryModel: string;
+  private readonly primaryBaseUrl: string;
+
+  private readonly fallbackClient: OpenAI | null;
+  private readonly fallbackModel: string | null;
+  private readonly fallbackBaseUrl: string | null;
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.primaryBaseUrl = this.config.getOrThrow('AI_BASE_URL');
+    this.primaryClient = new OpenAI({ baseURL: this.primaryBaseUrl, apiKey: this.config.getOrThrow('AI_API_KEY') });
     this.primaryModel = this.config.getOrThrow('AI_MODEL');
-    this.fallbackModel = this.config.get('AI_MODEL_FALLBACK') ?? this.primaryModel;
+
+    const fallbackBaseUrl = this.config.get('AI_FALLBACK_BASE_URL');
+    const fallbackApiKey = this.config.get('AI_FALLBACK_API_KEY');
+    const fallbackModel = this.config.get('AI_FALLBACK_MODEL');
+
+    if (fallbackBaseUrl && fallbackApiKey && fallbackModel) {
+      this.fallbackBaseUrl = fallbackBaseUrl;
+      this.fallbackClient = new OpenAI({ baseURL: fallbackBaseUrl, apiKey: fallbackApiKey });
+      this.fallbackModel = fallbackModel;
+    } else {
+      this.fallbackBaseUrl = null;
+      this.fallbackClient = null;
+      this.fallbackModel = null;
+    }
   }
 
   async generateStructured(req: StructuredGenerationRequest): Promise<StructuredGenerationResult> {
     try {
-      return await this.callModel(this.primaryModel, req);
+      return await this.callAndLog('primary', this.primaryClient, this.primaryModel, this.primaryBaseUrl, req);
     } catch (err) {
-      this.logger.warn(
-        `Основная модель ${this.primaryModel} недоступна (${(err as Error).message}), пробую fallback ${this.fallbackModel}`,
-      );
-      return await this.callModel(this.fallbackModel, req);
+      if (!this.fallbackClient) throw err;
+      this.logger.warn(`Primary AI-провайдер недоступен (${(err as Error).message}), пробую fallback`);
+      return await this.callAndLog('fallback', this.fallbackClient, this.fallbackModel!, this.fallbackBaseUrl!, req);
+    }
+  }
+
+  private async callAndLog(
+    provider: 'primary' | 'fallback',
+    client: OpenAI,
+    model: string,
+    baseUrl: string,
+    req: StructuredGenerationRequest,
+  ): Promise<StructuredGenerationResult> {
+    const startedAt = Date.now();
+    try {
+      const result = await this.callModel(client, model, req);
+      await this.logCall(provider, baseUrl, model, true, null, Date.now() - startedAt);
+      return result;
+    } catch (err) {
+      await this.logCall(provider, baseUrl, model, false, (err as Error).message, Date.now() - startedAt);
+      throw err;
+    }
+  }
+
+  private async logCall(
+    provider: string,
+    baseUrl: string,
+    model: string,
+    success: boolean,
+    errorMessage: string | null,
+    latencyMs: number,
+  ) {
+    // Best-effort — если лог не записался, это не должно ронять сам запрос.
+    try {
+      await this.prisma.aiCallLog.create({
+        data: { provider, baseUrl, model, success, errorMessage, latencyMs },
+      });
+    } catch (err) {
+      this.logger.warn(`Не удалось записать AiCallLog: ${(err as Error).message}`);
     }
   }
 
   private async callModel(
+    client: OpenAI,
     model: string,
     req: StructuredGenerationRequest,
   ): Promise<StructuredGenerationResult> {
-    const response = await this.client.responses.create({
+    const response = await client.responses.create({
       model,
       instructions: req.systemPrompt,
       input: req.userPrompt,
-      // web_search_preview — так этот инструмент называется в типах текущей
-      // версии openai SDK (4.104.0). Новое имя "web_search" в некоторых
-      // версиях доков OpenAI уже встречается, но SDK его пока не типизирует —
-      // если агрегатор явно потребует новое имя, поменять здесь одну строку.
       tools: [{ type: 'web_search_preview' }],
-      // Просим просто валидный JSON (не строгую json_schema) — точную форму
-      // всё равно перепроверяем через zod в reports.service.ts после парсинга,
-      // так меньше риск разъехаться с версией Responses API у агрегатора.
       text: { format: { type: 'json_object' } },
       temperature: 0.2,
     });

@@ -5,6 +5,7 @@ import { tokens } from '../../lib/tokens';
 import { api } from '../../lib/api';
 import { ensureUserId, getAuthToken, getUserEmail, isLoggedIn, persistSession, logout } from '../../lib/session';
 import SiteFooter from '../../components/SiteFooter';
+import SiteHeader from '../../components/SiteHeader';
 import FeedbackWidget from '../../components/FeedbackWidget';
 
 const PACKAGES = [
@@ -176,12 +177,7 @@ export default function AccountPage() {
         .ak-focus:focus-visible { outline: 2px solid ${tokens.blue}; outline-offset: 2px; }
       `}</style>
 
-      <header style={{ maxWidth: 880, margin: '0 auto', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <a href="/" style={{ fontFamily: "'Anton', sans-serif", fontSize: 22, letterSpacing: '0.03em', textDecoration: 'none', color: tokens.ink }}>
-          AUTO<span style={{ color: tokens.red }}>KNOW</span>
-        </a>
-        <a href="/" className="ak-link">← На главную</a>
-      </header>
+      <SiteHeader maxWidth={880} />
 
       <main style={{ maxWidth: 880, margin: '0 auto', padding: '0 24px 60px' }}>
         <h1 style={{ fontFamily: "'Anton', sans-serif", fontSize: 'clamp(28px, 4.5vw, 42px)', margin: '0 0 24px' }}>ЛИЧНЫЙ КАБИНЕТ</h1>
@@ -206,6 +202,21 @@ export default function AccountPage() {
                 ))}
               </div>
             </Card>
+
+            {getUserEmail() && getUserEmail() === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
+              <a
+                href="/admin"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', textDecoration: 'none',
+                  background: tokens.amberSoft, border: `1px solid ${tokens.amber}`, borderRadius: 10, padding: '14px 18px', marginBottom: 28,
+                }}
+              >
+                <span style={{ fontFamily: "'Anton', sans-serif", fontSize: 14, color: tokens.amber, letterSpacing: '0.02em' }}>
+                  ЭТО АДМИНСКИЙ АККАУНТ — ПЕРЕЙТИ В АДМИН-ПАНЕЛЬ
+                </span>
+                <span style={{ color: tokens.amber }}>→</span>
+              </a>
+            )}
 
             <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${tokens.line}`, marginBottom: 20, flexWrap: 'wrap' }}>
               {TABS.map((t) => (

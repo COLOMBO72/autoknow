@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { tokens } from '../lib/tokens';
 import { api } from '../lib/api';
 import SiteFooter from '../components/SiteFooter';
+import SiteHeader from '../components/SiteHeader';
 
 const ANY_VALUE = '__any__';
 const YEARS = Array.from({ length: 2024 - 2005 + 1 }, (_, i) => 2024 - i);
@@ -211,14 +212,7 @@ export default function HomePage() {
         .ak-focus:focus-visible { outline: 2px solid ${tokens.blue}; outline-offset: 2px; }
       `}</style>
 
-      <header style={{ maxWidth: 1080, margin: '0 auto', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontFamily: "'Anton', sans-serif", fontSize: 24, letterSpacing: '0.03em' }}>
-          AUTO<span style={{ color: tokens.red }}>KNOW</span>
-        </span>
-        <a href="/account" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: tokens.inkSoft, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '7px 14px', textDecoration: 'none' }}>
-          ЛИЧНЫЙ КАБИНЕТ
-        </a>
-      </header>
+      <SiteHeader />
 
       <section style={{ maxWidth: 1080, margin: '0 auto', padding: '20px 24px 8px' }}>
         <h1 style={{ fontFamily: "'Anton', sans-serif", fontSize: 'clamp(38px, 6vw, 64px)', lineHeight: 1.02, letterSpacing: '0.01em', margin: '0 0 16px', maxWidth: 780 }}>
@@ -320,6 +314,27 @@ export default function HomePage() {
           {submitError && <p style={{ color: tokens.red, fontSize: 13, marginTop: 10 }}>{submitError}</p>}
         </div>
       </section>
+
+      {Object.keys(catalog).length > 0 && (
+        <section style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 40px' }}>
+          <h2 style={{ fontFamily: "'Anton', sans-serif", fontSize: 18, letterSpacing: '0.02em', margin: '0 0 16px', color: tokens.inkSoft }}>
+            ПОПУЛЯРНЫЕ МОДЕЛИ
+          </h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(catalog).flatMap(([b, models]) =>
+              models.map((m) => (
+                <a
+                  key={`${b}-${m}`}
+                  href={`/report?brand=${encodeURIComponent(b)}&model=${encodeURIComponent(m)}&yearFrom=2021`}
+                  style={{ fontSize: 13, color: tokens.inkSoft, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '6px 12px', textDecoration: 'none' }}
+                >
+                  {b} {m}
+                </a>
+              )),
+            )}
+          </div>
+        </section>
+      )}
 
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px' }}>
         <p style={{ fontSize: 12, color: tokens.inkSoft, maxWidth: 640, lineHeight: 1.6 }}>

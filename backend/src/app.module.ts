@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     CatalogModule,
     AuthModule,
     FeedbackModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

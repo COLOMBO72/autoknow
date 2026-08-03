@@ -1,12 +1,12 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { ReportBlockType, CarReportBlock, Prisma } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
-import { AI_PROVIDER, AiProvider } from "../ai/ai-provider.interface";
-import { CarContextProvider } from "./car-context.provider";
-import { buildCarReportPrompt } from "./car-report.prompt";
-import { carReportSchema, CarReport } from "./car-report.schema";
-import { calculateExpiresAt } from "./report-ttl.policy";
-import { CatalogService } from "../catalog/catalog.service";
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ReportBlockType, CarReportBlock, Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { AI_PROVIDER, AiProvider } from '../ai/ai-provider.interface';
+import { CarContextProvider } from './car-context.provider';
+import { buildCarReportPrompt } from './car-report.prompt';
+import { carReportSchema, CarReport } from './car-report.schema';
+import { calculateExpiresAt } from './report-ttl.policy';
+import { CatalogService } from '../catalog/catalog.service';
 
 export interface CarVariantInput {
   brand: string;
@@ -53,10 +53,7 @@ export class ReportsService {
       // (в dev-режиме — двойной вызов эффекта React StrictMode, в проде —
       // просто два реальных запроса почти одновременно). Не ошибка бизнес-
       // логики — забираем уже созданную запись вместо падения.
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2002"
-      ) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return this.prisma.carVariant.findUniqueOrThrow({
           where: {
             brand_model_generation_yearFrom_yearTo_engine_bodyType: normalized,
@@ -72,10 +69,11 @@ export class ReportsService {
   // случай, а не резолвим синонимы.
   //
   // ВАЖНО: Prisma не умеет искать по составному @@unique-ключу, если в нём
-  // участвует null — генерируемый тип для такого where требует именно string/
-  // number, без null. Поэтому "не указано" храним не как null, а как '' / 0 —
-  // единообразно и в where, и в create, иначе повторный запрос не найдёт уже
-  // созданную запись и кэш перестанет работать.
+  // участвует null — генерируемый тип для such where требует именно string/
+  // number, без null (это её собственное ограничение, не наша прихоть).
+  // Поэтому "не указано" храним не как null, а как '' / 0 — единообразно
+  // и в where, и в create, иначе повторный запрос не найдёт уже созданную
+  // запись и кэш перестанет работать.
   private normalize(input: CarVariantInput): {
     brand: string;
     model: string;
@@ -88,11 +86,11 @@ export class ReportsService {
     return {
       brand: input.brand.trim().toLowerCase(),
       model: input.model.trim().toLowerCase(),
-      generation: input.generation?.trim().toLowerCase() ?? "",
+      generation: input.generation?.trim().toLowerCase() ?? '',
       yearFrom: input.yearFrom,
       yearTo: input.yearTo ?? 0,
-      engine: input.engine?.trim().toLowerCase() ?? "",
-      bodyType: input.bodyType?.trim().toLowerCase() ?? "",
+      engine: input.engine?.trim().toLowerCase() ?? '',
+      bodyType: input.bodyType?.trim().toLowerCase() ?? '',
     };
   }
 
@@ -104,9 +102,7 @@ export class ReportsService {
   }
 
   async recordPurchase(userId: string, carVariantId: string) {
-    return this.prisma.purchasedReport.create({
-      data: { userId, carVariantId },
-    });
+    return this.prisma.purchasedReport.create({ data: { userId, carVariantId } });
   }
 
   async saveComparison(userId: string, carVariantIds: string[]) {
@@ -138,17 +134,13 @@ export class ReportsService {
       };
     }
 
-    this.logger.log(
-      `Кэш-промах/устарел для carVariant ${carVariant.id}, генерирую через AI`,
-    );
+    this.logger.log(`Кэш-промах/устарел для carVariant ${carVariant.id}, генерирую через AI`);
     const report = await this.generateFreshReport(input);
 
     // Best-effort: копилка каталога не должна ронять основной запрос,
     // если тут что-то пойдёт не так — просто логируем и едем дальше.
     this.catalog.recordDiscoveredVariants(input, report.specs).catch((err) => {
-      this.logger.warn(
-        `Не удалось обновить каталог для ${input.brand} ${input.model}: ${(err as Error).message}`,
-      );
+      this.logger.warn(`Не удалось обновить каталог для ${input.brand} ${input.model}: ${(err as Error).message}`);
     });
 
     await Promise.all(
@@ -173,19 +165,14 @@ export class ReportsService {
     return { report, fromCache: false, carVariantId: carVariant.id };
   }
 
-  private async generateFreshReport(
-    input: CarVariantInput,
-  ): Promise<CarReport> {
+  private async generateFreshReport(input: CarVariantInput): Promise<CarReport> {
     const contextChunks = await this.contextProvider.getContextChunks(input);
-    const { systemPrompt, userPrompt } = buildCarReportPrompt(
-      input,
-      contextChunks,
-    );
+    const { systemPrompt, userPrompt } = buildCarReportPrompt(input, contextChunks);
 
     const result = await this.ai.generateStructured({
       systemPrompt,
       userPrompt,
-      responseSchemaName: "CarReport",
+      responseSchemaName: 'CarReport',
     });
 
     const parsed = JSON.parse(result.raw);
@@ -196,11 +183,11 @@ export class ReportsService {
 
   private blockTypeToKey(type: ReportBlockType): keyof CarReport {
     const map: Record<ReportBlockType, keyof CarReport> = {
-      SPECS: "specs",
-      PROBLEMS: "problems",
-      COSTS: "costs",
-      INSURANCE: "insurance",
-      PRICE: "price",
+      SPECS: 'specs',
+      PROBLEMS: 'problems',
+      COSTS: 'costs',
+      INSURANCE: 'insurance',
+      PRICE: 'price',
     };
     return map[type];
   }
