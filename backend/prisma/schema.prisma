@@ -16,6 +16,7 @@ model User {
   passwordHash           String? // null, пока человек не зарегистрировался — просто гостевой аккаунт
   passwordResetTokenHash String?
   passwordResetExpiresAt DateTime?
+  consentGivenAt         DateTime? // когда согласился с офертой и политикой ПДн — фиксируем для доказательства
   balanceKopeks          Int               @default(0) // баланс храним в копейках, без float
   createdAt              DateTime          @default(now())
 

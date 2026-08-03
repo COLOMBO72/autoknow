@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState('login'); // login | register
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +36,7 @@ export default function LoginPage() {
       const result =
         mode === 'login'
           ? await api.login(email, password)
-          : await api.register(email, password, getGuestUserId() || undefined);
+          : await api.register(email, password, consent, getGuestUserId() || undefined);
       persistSession({ userId: result.userId, token: result.token, email });
       router.push('/account');
     } catch (err) {
@@ -78,12 +79,24 @@ export default function LoginPage() {
           <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} />
           <input type="password" required minLength={8} placeholder="Пароль (от 8 символов)" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
 
+          {mode === 'register' && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: tokens.inkSoft, marginBottom: 14, cursor: 'pointer' }}>
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                Согласен с{' '}
+                <a href="/terms" target="_blank" style={{ color: tokens.inkSoft, textDecoration: 'underline' }}>публичной офертой</a>
+                {' '}и{' '}
+                <a href="/privacy" target="_blank" style={{ color: tokens.inkSoft, textDecoration: 'underline' }}>политикой обработки персональных данных</a>
+              </span>
+            </label>
+          )}
+
           {error && <p style={{ color: tokens.red, fontSize: 13, marginBottom: 12 }}>{error}</p>}
 
           <button
             type="submit"
-            disabled={loading}
-            style={{ width: '100%', fontFamily: "'Anton', sans-serif", fontSize: 16, padding: '13px 16px', borderRadius: 8, border: 'none', background: tokens.red, color: '#fff', cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+            disabled={loading || (mode === 'register' && !consent)}
+            style={{ width: '100%', fontFamily: "'Anton', sans-serif", fontSize: 16, padding: '13px 16px', borderRadius: 8, border: 'none', background: tokens.red, color: '#fff', cursor: 'pointer', opacity: loading || (mode === 'register' && !consent) ? 0.5 : 1 }}
           >
             {loading ? 'СЕКУНДУ…' : mode === 'login' ? 'ВОЙТИ' : 'ЗАРЕГИСТРИРОВАТЬСЯ'}
           </button>

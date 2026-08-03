@@ -5,6 +5,7 @@ import { AuthGuard } from './auth.guard';
 interface RegisterDto {
   email: string;
   password: string;
+  consentGiven: boolean;
   existingUserId?: string; // id анонимного гостя, чтобы прикрепить аккаунт к нему
 }
 interface LoginDto {
@@ -33,7 +34,7 @@ export class AuthController {
 
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto.email, dto.password, dto.existingUserId);
+    return this.auth.register(dto.email, dto.password, dto.consentGiven, dto.existingUserId);
   }
 
   @Post('login')

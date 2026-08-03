@@ -48,17 +48,21 @@ export class AuthService {
    * к ЕГО аккаунту, чтобы не потерять баланс и историю. Если нет —
    * создаём нового пользователя с нуля.
    */
-  async register(rawEmail: string, password: string, existingUserId?: string) {
+  async register(rawEmail: string, password: string, consentGiven: boolean, existingUserId?: string) {
     const email = this.normalizeEmail(rawEmail);
+    if (!consentGiven) {
+      throw new BadRequestException('Нужно согласиться с офертой и политикой обработки персональных данных');
+    }
     const taken = await this.prisma.user.findUnique({ where: { email } });
     if (taken) throw new BadRequestException('Этот email уже зарегистрирован');
     if (password.length < 8) throw new BadRequestException('Пароль должен быть не короче 8 символов');
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const data = { email, passwordHash, consentGivenAt: new Date() };
 
     const user = existingUserId
-      ? await this.prisma.user.update({ where: { id: existingUserId }, data: { email, passwordHash } })
-      : await this.prisma.user.create({ data: { email, passwordHash } });
+      ? await this.prisma.user.update({ where: { id: existingUserId }, data })
+      : await this.prisma.user.create({ data });
 
     return { userId: user.id, token: this.signToken(user.id) };
   }

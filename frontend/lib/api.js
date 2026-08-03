@@ -36,8 +36,8 @@ export const api = {
   topup: (userId, amountKopeks) =>
     request('/billing/topup', { method: 'POST', body: JSON.stringify({ userId, amountKopeks }) }),
 
-  register: (email, password, existingUserId) =>
-    request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, existingUserId }) }),
+  register: (email, password, consentGiven, existingUserId) =>
+    request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, consentGiven, existingUserId }) }),
   login: (email, password) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   forgotPassword: (email) =>

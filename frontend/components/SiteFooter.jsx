@@ -14,6 +14,8 @@ export default function SiteFooter() {
           </a>
         </span>
         <div style={{ display: 'flex', gap: 16 }}>
+          <a href="/privacy" style={{ color: tokens.inkSoft }}>Персональные данные</a>
+          <a href="/terms" style={{ color: tokens.inkSoft }}>Оферта</a>
           <a href="https://vk.ru/veliumdev" target="_blank" rel="noopener noreferrer" style={{ color: tokens.inkSoft }}>
             VK
           </a>
