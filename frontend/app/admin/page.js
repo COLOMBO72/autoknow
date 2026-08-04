@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [topupEmail, setTopupEmail] = useState('');
   const [topupAmount, setTopupAmount] = useState('300');
   const [topupMsg, setTopupMsg] = useState(null);
+  const [editingCarVariantId, setEditingCarVariantId] = useState(null);
 
   async function loadAll() {
     const token = getAuthToken();
@@ -193,11 +194,138 @@ export default function AdminPage() {
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: tokens.inkSoft }}>{formatDateTime(f.createdAt)}</span>
               </div>
               <p style={{ margin: 0, color: tokens.inkSoft }}>{f.message}</p>
-              {(f.contactInfo || f.user?.email) && <p style={{ margin: '4px 0 0', fontSize: 11.5 }}>контакт: {f.contactInfo || f.user?.email}</p>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                {(f.contactInfo || f.user?.email) && <p style={{ margin: 0, fontSize: 11.5 }}>контакт: {f.contactInfo || f.user?.email}</p>}
+                {f.carVariantId && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingCarVariantId(f.carVariantId)}
+                    style={{ background: 'none', border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '4px 12px', fontSize: 11.5, color: tokens.amber, cursor: 'pointer' }}
+                  >
+                    Исправить отчёт →
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </Card>
+
+        <ReportEditor presetCarVariantId={editingCarVariantId} />
       </main>
     </div>
+  );
+}
+
+const BLOCK_LABELS = {
+  SPECS: 'Характеристики',
+  PROBLEMS: 'Болячки',
+  COSTS: 'Расходы',
+  INSURANCE: 'Страховка',
+  PRICE: 'Цена',
+};
+
+function ReportEditor({ presetCarVariantId }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null); // { carVariant, blocks }
+  const [drafts, setDrafts] = useState({}); // type -> текст textarea
+  const [status, setStatus] = useState({}); // type -> 'saving' | 'ok' | { error }
+
+  async function loadCarVariant(id) {
+    const data = await api.adminGetCarVariantBlocks(getAuthToken(), id);
+    setSelected(data);
+    const nextDrafts = {};
+    data.blocks.forEach((b) => {
+      nextDrafts[b.type] = JSON.stringify(b.content, null, 2);
+    });
+    setDrafts(nextDrafts);
+    setStatus({});
+  }
+
+  useEffect(() => {
+    if (presetCarVariantId) loadCarVariant(presetCarVariantId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetCarVariantId]);
+
+  async function handleSearch(e) {
+    e.preventDefault();
+    const r = await api.adminSearchCarVariants(getAuthToken(), query);
+    setResults(r);
+  }
+
+  async function handleSave(type) {
+    setStatus((s) => ({ ...s, [type]: 'saving' }));
+    try {
+      await api.adminUpdateCarVariantBlock(getAuthToken(), selected.carVariant.id, type, drafts[type]);
+      setStatus((s) => ({ ...s, [type]: 'ok' }));
+    } catch (err) {
+      setStatus((s) => ({ ...s, [type]: { error: err.message } }));
+    }
+  }
+
+  return (
+    <Card>
+      <h3 style={{ fontFamily: "'Anton', sans-serif", fontSize: 16, margin: '0 0 12px' }}>ИСПРАВИТЬ ОТЧЁТ ВРУЧНУЮ</h3>
+
+      <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <input
+          value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Марка или модель, например kia rio"
+          style={{ flex: 1, padding: '9px 12px', borderRadius: 6, border: `1px solid ${tokens.line}`, background: '#1C1F24', color: tokens.ink, fontFamily: "'Inter', sans-serif", fontSize: 14 }}
+        />
+        <button type="submit" style={{ fontFamily: "'Anton', sans-serif", fontSize: 12, padding: '9px 16px', borderRadius: 6, border: 'none', background: tokens.line, color: tokens.ink, cursor: 'pointer' }}>
+          НАЙТИ
+        </button>
+      </form>
+
+      {results.length > 0 && !selected && (
+        <div style={{ marginBottom: 14 }}>
+          {results.map((r) => (
+            <div
+              key={r.id} onClick={() => loadCarVariant(r.id)}
+              style={{ fontSize: 13, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', borderBottom: `1px dashed ${tokens.line}` }}
+            >
+              {r.brand} {r.model} {r.yearFrom}{r.engine ? ` · ${r.engine}` : ''}{r.bodyType ? ` · ${r.bodyType}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <strong style={{ fontSize: 14 }}>{selected.carVariant.brand} {selected.carVariant.model} {selected.carVariant.yearFrom}</strong>
+            <button type="button" onClick={() => { setSelected(null); setResults([]); }} style={{ background: 'none', border: 'none', color: tokens.inkSoft, fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+              выбрать другую
+            </button>
+          </div>
+
+          {Object.keys(BLOCK_LABELS).map((type) => {
+            if (drafts[type] === undefined) return null;
+            const st = status[type];
+            return (
+              <div key={type} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: tokens.inkSoft, textTransform: 'uppercase' }}>{BLOCK_LABELS[type]}</span>
+                  <button
+                    type="button" onClick={() => handleSave(type)} disabled={st === 'saving'}
+                    style={{ fontFamily: "'Anton', sans-serif", fontSize: 11, padding: '5px 12px', borderRadius: 6, border: 'none', background: tokens.red, color: '#fff', cursor: 'pointer', opacity: st === 'saving' ? 0.6 : 1 }}
+                  >
+                    {st === 'saving' ? 'СОХРАНЯЮ…' : 'СОХРАНИТЬ'}
+                  </button>
+                </div>
+                <textarea
+                  value={drafts[type]}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [type]: e.target.value }))}
+                  rows={8}
+                  style={{ width: '100%', padding: 10, borderRadius: 6, border: `1px solid ${tokens.line}`, background: '#0F1114', color: tokens.ink, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, resize: 'vertical' }}
+                />
+                {st === 'ok' && <p style={{ fontSize: 11.5, color: tokens.ink, marginTop: 4 }}>✓ Сохранено</p>}
+                {st?.error && <p style={{ fontSize: 11.5, color: tokens.red, marginTop: 4 }}>{st.error}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }

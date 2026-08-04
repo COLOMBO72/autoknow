@@ -1,6 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AiCallLog, Prisma } from '@prisma/client';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { AiCallLog, Prisma, ReportBlockType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  specsSchema,
+  problemsSchema,
+  costsSchema,
+  insuranceSchema,
+  priceSchema,
+} from '../reports/car-report.schema';
+import { calculateExpiresAt } from '../reports/report-ttl.policy';
+
+const BLOCK_SCHEMAS: Record<ReportBlockType, { parse: (v: unknown) => unknown }> = {
+  SPECS: specsSchema,
+  PROBLEMS: problemsSchema,
+  COSTS: costsSchema,
+  INSURANCE: insuranceSchema,
+  PRICE: priceSchema,
+};
 
 @Injectable()
 export class AdminService {
@@ -90,6 +106,53 @@ export class AdminService {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: { user: { select: { email: true } } },
+    });
+  }
+
+  async searchCarVariants(query: string) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return this.prisma.carVariant.findMany({
+      where: { OR: [{ brand: { contains: q } }, { model: { contains: q } }] },
+      take: 20,
+      orderBy: [{ brand: 'asc' }, { model: 'asc' }],
+    });
+  }
+
+  async getCarVariantBlocks(carVariantId: string) {
+    const carVariant = await this.prisma.carVariant.findUnique({ where: { id: carVariantId } });
+    if (!carVariant) throw new NotFoundException('Машина не найдена');
+    const blocks = await this.prisma.carReportBlock.findMany({ where: { carVariantId } });
+    return { carVariant, blocks };
+  }
+
+  /**
+   * Ручная правка блока отчёта из тикета в поддержку. Прогоняется через ту
+   * же zod-схему, что и ответы ИИ — нельзя случайно сохранить сломанный
+   * JSON, структура должна совпадать 1-в-1. TTL продлевается заново и
+   * помечается aiModel: 'admin-manual-edit', чтобы было видно в данных,
+   * что это не сгенерировано моделью.
+   */
+  async updateCarVariantBlock(carVariantId: string, type: ReportBlockType, rawContent: string) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawContent);
+    } catch {
+      throw new BadRequestException('Это не валидный JSON — проверь синтаксис (скобки/запятые)');
+    }
+
+    let validated: unknown;
+    try {
+      validated = BLOCK_SCHEMAS[type].parse(parsedJson);
+    } catch (err) {
+      throw new BadRequestException(`Не проходит проверку структуры: ${(err as Error).message}`);
+    }
+
+    const now = new Date();
+    return this.prisma.carReportBlock.upsert({
+      where: { carVariantId_type: { carVariantId, type } },
+      update: { content: validated as Prisma.InputJsonValue, generatedAt: now, expiresAt: calculateExpiresAt(type, now), aiModel: 'admin-manual-edit' },
+      create: { carVariantId, type, content: validated as Prisma.InputJsonValue, expiresAt: calculateExpiresAt(type, now), aiModel: 'admin-manual-edit' },
     });
   }
 

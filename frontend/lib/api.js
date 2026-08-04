@@ -71,4 +71,14 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ email, amountKopeks }),
     }),
+  adminSearchCarVariants: (token, q) =>
+    request(`/admin/car-variants/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } }),
+  adminGetCarVariantBlocks: (token, id) =>
+    request(`/admin/car-variants/${id}/blocks`, { headers: { Authorization: `Bearer ${token}` } }),
+  adminUpdateCarVariantBlock: (token, id, type, content) =>
+    request(`/admin/car-variants/${id}/blocks/${type}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ content }),
+    }),
 };

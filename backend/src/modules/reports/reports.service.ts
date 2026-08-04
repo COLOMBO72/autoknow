@@ -169,16 +169,21 @@ export class ReportsService {
     const contextChunks = await this.contextProvider.getContextChunks(input);
     const { systemPrompt, userPrompt } = buildCarReportPrompt(input, contextChunks);
 
-    const result = await this.ai.generateStructured({
-      systemPrompt,
-      userPrompt,
-      responseSchemaName: 'CarReport',
-    });
+    const first = await this.ai.generateStructured({ systemPrompt, userPrompt, responseSchemaName: 'CarReport' });
 
-    const parsed = JSON.parse(result.raw);
-    // Бросит понятную ошибку, если модель вернула не то, что мы ожидаем —
-    // лучше упасть с ошибкой, чем сохранить в БД мусор.
-    return carReportSchema.parse(parsed);
+    try {
+      return carReportSchema.parse(JSON.parse(first.raw));
+    } catch (err) {
+      // Модель сбилась с формата — редко, но случается. Даём ей одну
+      // попытку исправиться, показав, в чём именно была ошибка, вместо
+      // того чтобы сразу ронять запрос пользователя.
+      this.logger.warn(`Первый ответ модели не прошёл валидацию (${(err as Error).message}), пробую повторно с уточнением`);
+
+      const repairPrompt = `${userPrompt}\n\nТвой предыдущий ответ не прошёл проверку формата: ${(err as Error).message}\nПредыдущий ответ был:\n${first.raw}\n\nИсправь и верни СТРОГО валидный JSON по той же структуре, без пояснений.`;
+
+      const second = await this.ai.generateStructured({ systemPrompt, userPrompt: repairPrompt, responseSchemaName: 'CarReport' });
+      return carReportSchema.parse(JSON.parse(second.raw));
+    }
   }
 
   private blockTypeToKey(type: ReportBlockType): keyof CarReport {
