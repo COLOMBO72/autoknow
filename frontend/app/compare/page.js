@@ -74,6 +74,7 @@ export default function ComparePage() {
   const shell = (children) => (
     <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, ${tokens.bgGradientTop} 0%, ${tokens.bg} 380px)`, color: tokens.ink, fontFamily: "'Inter', sans-serif" }}>
       <style>{`
+        @media (max-width: 768px) { .ak-scroll-hint { display: block !important; } }
         .ak-link { color: ${tokens.inkSoft}; text-decoration: none; font-size: 13px; }
         .ak-link:hover { color: ${tokens.ink}; }
         .ak-remove { transition: color 0.15s ease; }
@@ -115,7 +116,8 @@ export default function ComparePage() {
     <>
       <a href="/" className="ak-link" style={{ display: 'inline-block', margin: '20px 0 16px' }}>← Назад к выбору</a>
       <h1 style={{ fontFamily: "'Anton', sans-serif", fontSize: 'clamp(28px, 4.5vw, 42px)', margin: '0 0 6px' }}>СРАВНЕНИЕ</h1>
-      <p style={{ fontSize: 14, color: tokens.inkSoft, margin: '0 0 28px' }}>{cars.length} машины · до 5 в одном сравнении</p>
+      <p style={{ fontSize: 14, color: tokens.inkSoft, margin: '0 0 8px' }}>{cars.length} машины · до 5 в одном сравнении</p>
+      <p className="ak-scroll-hint" style={{ fontSize: 12, color: tokens.inkSoft, margin: '0 0 20px', display: 'none' }}>← листай таблицу в сторону →</p>
 
       <div className="ak-scroll">
         <div style={{ display: 'grid', gridTemplateColumns: `180px repeat(${cars.length}, minmax(180px, 1fr))`, minWidth: 180 + cars.length * 180, gap: 10 }}>

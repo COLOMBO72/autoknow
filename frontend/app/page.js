@@ -195,6 +195,10 @@ export default function HomePage() {
   return (
     <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, ${tokens.bgGradientTop} 0%, ${tokens.bg} 380px)`, color: tokens.ink, fontFamily: "'Inter', sans-serif" }}>
       <style>{`
+        @media (max-width: 860px) {
+          .ak-hero-grid { grid-template-columns: 1fr !important; }
+          .ak-hero-visual { position: static !important; }
+        }
         .ak-draw { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: akDraw 1.4s cubic-bezier(0.4,0,0.2,1) forwards; }
         @keyframes akDraw { to { stroke-dashoffset: 0; } }
         .ak-wheel { opacity: 0; animation: akFadeScale 0.5s ease forwards 1.1s; transform-origin: center; }
@@ -229,8 +233,8 @@ export default function HomePage() {
         )}
       </section>
 
-      <section style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 60px', display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.1fr)', gap: 32, alignItems: 'start' }}>
-        <div style={{ position: 'sticky', top: 24 }}>
+      <section className="ak-hero-grid" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 60px', display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.1fr)', gap: 32, alignItems: 'start' }}>
+        <div className="ak-hero-visual" style={{ position: 'sticky', top: 24 }}>
           <ScanCar />
         </div>
 

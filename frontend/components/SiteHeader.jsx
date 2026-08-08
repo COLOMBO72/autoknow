@@ -42,7 +42,7 @@ export default function SiteHeader({ maxWidth = 1080 }) {
           {loggedIn ? (
             <a
               href="/account"
-              style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: tokens.ink, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '9px 16px', textDecoration: 'none' }}
+              style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: tokens.ink, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '9px 16px', textDecoration: 'none', maxWidth: '45vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             >
               {email}
             </a>
