@@ -1,10 +1,17 @@
 import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { ReportsService, CarVariantInput } from './reports.service';
 import { UsersService } from '../users/users.service';
+import { redactReport } from './car-report-redaction';
 
 interface PurchaseReportDto {
   userId: string;
+  car: CarVariantInput;
+}
+
+interface PreviewReportDto {
+  userId?: string; // может не быть — гость ещё не создал анонимный аккаунт
   car: CarVariantInput;
 }
 
@@ -21,6 +28,28 @@ export class ReportsController {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Бесплатный просмотр — характеристики видны сразу, болячки/расходы/цена
+   * урезаны до тизера. НЕ требует баланса и НЕ списывает деньги, но при
+   * промахе кэша всё равно реально генерирует отчёт через ИИ (осознанное
+   * решение — сейчас цель быстро наполнить базу трафиком, а не экономить
+   * на каждом уникальном запросе). Из-за этого — лимит запросов ниже,
+   * иначе кто угодно может анонимно устраивать дорогой перебор моделей.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('preview')
+  async preview(@Body() dto: PreviewReportDto) {
+    const carVariant = await this.reports.findOrCreateCarVariant(dto.car);
+    const owned = dto.userId ? await this.reports.hasPurchased(dto.userId, carVariant.id) : false;
+    const result = await this.reports.getOrGenerateReport(dto.car);
+
+    if (owned) {
+      return { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId };
+    }
+
+    return { report: redactReport(result.report), locked: true, fromCache: result.fromCache, carVariantId: result.carVariantId };
+  }
+
   @Post('purchase')
   async purchase(@Body() dto: PurchaseReportDto) {
     const carVariant = await this.reports.findOrCreateCarVariant(dto.car);
@@ -33,7 +62,13 @@ export class ReportsController {
     }
 
     const result = await this.reports.getOrGenerateReport(dto.car);
-    return { ...result, alreadyOwned: alreadyPurchased };
+    const totalPurchased = await this.reports.countPurchasedReports(dto.userId);
+
+    return {
+      ...result,
+      alreadyOwned: alreadyPurchased,
+      isFirstPurchase: !alreadyPurchased && totalPurchased === 1,
+    };
   }
 
   @Post('compare')

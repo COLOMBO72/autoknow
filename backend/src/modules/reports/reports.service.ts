@@ -105,6 +105,10 @@ export class ReportsService {
     return this.prisma.purchasedReport.create({ data: { userId, carVariantId } });
   }
 
+  async countPurchasedReports(userId: string): Promise<number> {
+    return this.prisma.purchasedReport.count({ where: { userId } });
+  }
+
   async saveComparison(userId: string, carVariantIds: string[]) {
     return this.prisma.comparison.create({ data: { userId, carVariantIds } });
   }

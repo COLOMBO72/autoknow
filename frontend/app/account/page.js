@@ -9,8 +9,8 @@ import SiteHeader from '../../components/SiteHeader';
 import FeedbackWidget from '../../components/FeedbackWidget';
 
 const PACKAGES = [
-  { id: 'p10', reports: 10, price: 300 },
-  { id: 'p30', reports: 30, price: 800 },
+  { id: 'p10', reports: 10, price: 700 }, // 70₽/шт при разовой цене 79₽
+  { id: 'p30', reports: 30, price: 1900 }, // ~63₽/шт
 ];
 
 function Card({ children, style }) {
@@ -31,6 +31,45 @@ function ListRow({ title, meta, right }) {
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function GuideSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h4 style={{ fontFamily: "'Anton', sans-serif", fontSize: 14, letterSpacing: '0.02em', margin: '0 0 10px', color: tokens.red }}>{title}</h4>
+      <div style={{ fontSize: 13.5, lineHeight: 1.7, color: tokens.inkSoft }}>{children}</div>
+    </div>
+  );
+}
+
+function BuyerGuide() {
+  return (
+    <Card>
+      <p style={{ fontSize: 13, color: tokens.inkSoft, marginBottom: 20 }}>
+        Памятка для тех, кто покупает или продаёт автомобиль впервые. Отчёты сервиса дополняют
+        это — сами по себе не заменяют осмотр и диагностику.
+      </p>
+
+      <GuideSection title="ДКП — договор купли-продажи">
+        <p>Обязательно должен содержать: ФИО и паспортные данные обеих сторон; данные автомобиля (марка, модель, VIN, гос. номер, год выпуска); цену; дату и место составления; подписи сторон.</p>
+        <p style={{ marginTop: 8 }}>Можно написать от руки в свободной форме или использовать типовой бланк — юридическую силу это не меняет. Один экземпляр остаётся у каждой стороны, нужен для постановки на учёт в ГИБДД.</p>
+      </GuideSection>
+
+      <GuideSection title="Что проверить при осмотре">
+        <p>Кузов — сколы, следы недавней покраски (разнотон, неровные зазоры между панелями), ржавчина в арках и порогах.</p>
+        <p style={{ marginTop: 8 }}>Двигатель — подтёки масла, цвет выхлопа на холодном запуске, посторонние стуки.</p>
+        <p style={{ marginTop: 8 }}>VIN и номера агрегатов — сверить с указанными в ПТС/СТС, не должно быть следов перебивки.</p>
+        <p style={{ marginTop: 8 }}>История — проверить на Госуслугах или через ГИБДД: залог, участие в ДТП, ограничения, количество предыдущих владельцев.</p>
+        <p style={{ marginTop: 8 }}>Перед покупкой — обязательна диагностика на независимом СТО, не у продавца.</p>
+      </GuideSection>
+
+      <GuideSection title="Как понять рыночную цену">
+        <p>Сравни несколько актуальных объявлений на авито/дром для машин того же года, пробега и региона — не ориентируйся на одно объявление.</p>
+        <p style={{ marginTop: 8 }}>Учитывай, что цена в объявлении обычно чуть выше той, за которую реально продают — торг закладывается заранее.</p>
+        <p style={{ marginTop: 8 }}>Медиана в наших отчётах — это ориентир по рынку в целом, а не цена конкретного экземпляра: состояние, комплектация и торг всё равно двигают её в ту или иную сторону.</p>
+      </GuideSection>
+    </Card>
+  );
 }
 
 function SettingsTab({ userId }) {
@@ -158,6 +197,7 @@ export default function AccountPage() {
     { id: 'reports', label: 'Отчёты', count: reports.length },
     { id: 'comparisons', label: 'Сравнения', count: comparisons.length },
     { id: 'transactions', label: 'Платежи', count: transactions.length },
+    { id: 'guide', label: 'Памятка' },
     { id: 'settings', label: 'Настройки' },
   ];
 
@@ -190,7 +230,7 @@ export default function AccountPage() {
               <div>
                 <div style={{ fontSize: 12, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Баланс</div>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 36, fontWeight: 600, color: tokens.red }}>{Math.round(balance / 100)} ₽</div>
-                <div style={{ fontSize: 12, color: tokens.inkSoft, marginTop: 4 }}>≈ {Math.floor(balance / 3000)} отчёта по текущей цене</div>
+                <div style={{ fontSize: 12, color: tokens.inkSoft, marginTop: 4 }}>≈ {Math.floor(balance / 7900)} отчёта по текущей цене</div>
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {PACKAGES.map((p) => (
@@ -264,6 +304,7 @@ export default function AccountPage() {
               </Card>
             )}
 
+            {tab === 'guide' && <BuyerGuide />}
             {tab === 'settings' && <SettingsTab userId={userId} />}
 
             <div style={{ marginTop: 24 }}>

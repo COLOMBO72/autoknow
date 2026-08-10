@@ -9,6 +9,7 @@ import { addToCart } from '../../lib/compareCart';
 import SiteFooter from '../../components/SiteFooter';
 import SiteHeader from '../../components/SiteHeader';
 import FeedbackWidget from '../../components/FeedbackWidget';
+import AchievementModal from '../../components/AchievementModal';
 
 const SEVERITY = {
   critical: { color: tokens.red, bg: tokens.redSoft, label: 'КРИТИЧНО' },
@@ -17,6 +18,7 @@ const SEVERITY = {
 };
 const FUEL_LABEL = { petrol: 'бензин', diesel: 'дизель', hybrid: 'гибрид', electric: 'электро', gas: 'газ' };
 const PARTS_LABEL = { excellent: 'отличная', good: 'хорошая', limited: 'ограниченная', poor: 'слабая' };
+const REPORT_PRICE_LABEL = '79 ₽';
 
 function SectionHeader({ n, title }) {
   return (
@@ -55,6 +57,23 @@ function Card({ children, style }) {
   return <div style={{ background: tokens.surface, border: `1px solid ${tokens.line}`, borderRadius: 10, padding: 22, ...style }}>{children}</div>;
 }
 
+function SkeletonBar({ width = '100%' }) {
+  return <div style={{ height: 12, width, borderRadius: 4, background: tokens.line, marginBottom: 8 }} />;
+}
+
+function SkeletonSection({ n, title, lines = 3 }) {
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <SectionHeader n={n} title={title} />
+      <Card>
+        {Array.from({ length: lines }).map((_, i) => (
+          <SkeletonBar key={i} width={i % 3 === 0 ? '60%' : '90%'} />
+        ))}
+      </Card>
+    </section>
+  );
+}
+
 function carFromParams(sp) {
   const car = { brand: sp.get('brand'), model: sp.get('model'), yearFrom: Number(sp.get('yearFrom')) };
   const generation = sp.get('generation');
@@ -71,6 +90,9 @@ function ReportContent() {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [addedToCompare, setAddedToCompare] = useState(false);
   const [userId, setUserId] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState(null);
+  const [showAchievement, setShowAchievement] = useState(false);
 
   const car = carFromParams(searchParams);
 
@@ -81,7 +103,7 @@ function ReportContent() {
       try {
         const uid = await ensureUserId(api);
         if (!cancelled) setUserId(uid);
-        const result = await api.purchaseReport(uid, car);
+        const result = await api.previewReport(uid, car);
         if (!cancelled) setState({ loading: false, error: null, data: result });
       } catch (err) {
         if (!cancelled) setState({ loading: false, error: err, data: null });
@@ -93,6 +115,20 @@ function ReportContent() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString()]);
+
+  async function handleUnlock() {
+    setUnlockError(null);
+    setUnlocking(true);
+    try {
+      const result = await api.purchaseReport(userId, car);
+      setState({ loading: false, error: null, data: { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId } });
+      if (result.isFirstPurchase) setShowAchievement(true);
+    } catch (err) {
+      setUnlockError(err);
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   const shell = (children) => (
     <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, ${tokens.bgGradientTop} 0%, ${tokens.bg} 380px)`, color: tokens.ink, fontFamily: "'Inter', sans-serif" }}>
@@ -126,30 +162,6 @@ function ReportContent() {
   }
 
   if (state.error) {
-    if (state.error.code === 'INSUFFICIENT_BALANCE') {
-      return shell(
-        <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <p style={{ fontSize: 16, marginBottom: 20 }}>Не хватает баланса, чтобы показать это досье.</p>
-          <a
-            href="/account"
-            className="ak-focus ak-cta"
-            style={{
-              display: 'inline-block',
-              fontFamily: "'Anton', sans-serif",
-              fontSize: 15,
-              letterSpacing: '0.02em',
-              padding: '13px 22px',
-              borderRadius: 8,
-              background: tokens.red,
-              color: '#fff',
-              textDecoration: 'none',
-            }}
-          >
-            ПОПОЛНИТЬ БАЛАНС
-          </a>
-        </div>,
-      );
-    }
     return shell(
       <div style={{ padding: '40px 0' }}>
         <p style={{ color: tokens.red, marginBottom: 12 }}>Не получилось получить отчёт: {state.error.message}</p>
@@ -159,9 +171,12 @@ function ReportContent() {
   }
 
   const r = state.data.report;
+  const locked = state.data.locked;
 
   return shell(
     <>
+      {showAchievement && <AchievementModal onClose={() => setShowAchievement(false)} />}
+
       <a href="/" className="ak-link" style={{ display: 'inline-block', margin: '20px 0' }}>← Назад к выбору</a>
 
       <div style={{ marginBottom: 24 }}>
@@ -174,16 +189,11 @@ function ReportContent() {
           ))}
         </div>
         <p style={{ fontSize: 12.5, color: tokens.inkSoft, margin: 0 }}>
-          {state.data.fromCache ? 'Из кэша — уже проверено недавно' : 'Только что собрано живым поиском ИИ'}
+          {state.data.fromCache ? 'Из базы — уже проверено недавно' : 'Только что собрано живым поиском ИИ'}
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 40 }}>
-        <StatTile label="Медианная цена" value={fmtRub(r.price.marketPriceRub.median)} delay={0} />
-        <StatTile label="Топливо + ТО в год" value={`${fmtRub(r.costs.fuelPerYearRub.min + r.costs.maintenancePerYearRub.min)}–${fmtRub(r.costs.fuelPerYearRub.max + r.costs.maintenancePerYearRub.max)}`} delay={100} />
-        <StatTile label="ОСАГО" value={`${fmtRub(r.insurance.osagoPerYearRub.min)}–${fmtRub(r.insurance.osagoPerYearRub.max)}`} delay={200} />
-      </div>
-
+      {/* Характеристики — всегда бесплатно и полностью */}
       <section style={{ marginBottom: 36 }}>
         <SectionHeader n="01" title="Двигатели и характеристики" />
         <Card>
@@ -211,121 +221,167 @@ function ReportContent() {
         </Card>
       </section>
 
-      <section style={{ marginBottom: 36 }}>
-        <SectionHeader n="02" title="Типичные проблемы" />
-        {r.problems.byEngine.map((group) => (
-          <div key={group.engine} style={{ marginBottom: 14 }}>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: tokens.inkSoft, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Мотор {group.engine}
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {group.commonIssues.map((issue) => {
-                const sev = SEVERITY[issue.severity];
-                return (
-                  <div key={issue.title} className="ak-issue" style={{ '--sev-color': sev.color, '--sev-bg': sev.bg }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-                      <strong style={{ fontSize: 14.5 }}>{issue.title}</strong>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: sev.color, whiteSpace: 'nowrap' }}>{sev.label}</span>
-                    </div>
-                    <p style={{ fontSize: 13.5, color: tokens.inkSoft, margin: 0, lineHeight: 1.5 }}>{issue.description}</p>
-                    {issue.mileageOrAgeHint && (
-                      <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: tokens.inkSoft, margin: '6px 0 0' }}>⌁ обычно на {issue.mileageOrAgeHint}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <section style={{ marginBottom: 36 }}>
-        <SectionHeader n="03" title="Расходы в год" />
-        <Card style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
-          <div>
-            <div style={{ fontSize: 12, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Топливо</div>
-            <RangeBar min={r.costs.fuelPerYearRub.min} max={r.costs.fuelPerYearRub.max} value={r.costs.fuelPerYearRub.max} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>ТО и запчасти</div>
-            <RangeBar min={r.costs.maintenancePerYearRub.min} max={r.costs.maintenancePerYearRub.max} value={r.costs.maintenancePerYearRub.max} />
-          </div>
-          <div style={{ gridColumn: '1 / -1', paddingTop: 12, borderTop: `1px dashed ${tokens.line}` }}>
-            <span style={{ fontSize: 12, color: tokens.inkSoft }}>
-              Доступность запчастей: <strong style={{ color: tokens.ink }}>{PARTS_LABEL[r.costs.partsAvailability]}</strong>. {r.costs.partsNote}
-            </span>
-          </div>
-        </Card>
-      </section>
-
-      <section style={{ marginBottom: 36 }}>
-        <SectionHeader n="04" title="Страховка и налог" />
-        <Card style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
-          <div>
-            <div style={{ fontSize: 12, color: tokens.inkSoft, marginBottom: 4 }}>ОСАГО / год</div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 600 }}>{fmtRub(r.insurance.osagoPerYearRub.min)} – {fmtRub(r.insurance.osagoPerYearRub.max)}</div>
-          </div>
-          {r.insurance.kaskoPerYearRub && (
-            <div>
-              <div style={{ fontSize: 12, color: tokens.inkSoft, marginBottom: 4 }}>КАСКО / год</div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 600 }}>{fmtRub(r.insurance.kaskoPerYearRub.min)} – {fmtRub(r.insurance.kaskoPerYearRub.max)}</div>
-            </div>
+      {locked ? (
+        <div style={{ position: 'relative' }}>
+          {state.data.teaser && (
+            <Card style={{ marginBottom: 20, borderColor: tokens.amber }}>
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Найдено <strong>{state.data.teaser.totalIssues}</strong> {state.data.teaser.totalIssues === 1 ? 'проблема' : 'проблемы/проблем'}
+                {state.data.teaser.hasCritical && <span style={{ color: tokens.red }}> — есть критичные</span>}
+                . Плюс расходы на год, страховка, актуальная цена на рынке и чек-лист из {state.data.teaser.checklistItemsCount} пунктов перед покупкой.
+              </p>
+            </Card>
           )}
-          <div style={{ gridColumn: '1 / -1', fontSize: 12.5, color: tokens.inkSoft, paddingTop: 12, borderTop: `1px dashed ${tokens.line}` }}>
-            {r.insurance.transportTaxNote}
-          </div>
-        </Card>
-      </section>
 
-      <section style={{ marginBottom: 36 }}>
-        <SectionHeader n="05" title="Цена на рынке" />
-        <Card>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 34, fontWeight: 600, color: tokens.red }}>{fmtRub(r.price.marketPriceRub.median)}</div>
-            <div style={{ fontSize: 13, color: tokens.inkSoft }}>медиана · диапазон {fmtRub(r.price.marketPriceRub.min)} – {fmtRub(r.price.marketPriceRub.max)}</div>
+          <div style={{ filter: 'blur(5px)', opacity: 0.45, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+            <SkeletonSection n="02" title="Типичные проблемы" lines={Math.max(3, state.data.teaser?.totalIssues ?? 3)} />
+            <SkeletonSection n="03" title="Расходы в год" lines={3} />
+            <SkeletonSection n="04" title="Страховка и налог" lines={2} />
+            <SkeletonSection n="05" title="Цена на рынке" lines={2} />
+            <SkeletonSection n="06" title="Чек-лист перед покупкой" lines={state.data.teaser?.checklistItemsCount ?? 4} />
           </div>
-          <RangeBar min={r.price.marketPriceRub.min} max={r.price.marketPriceRub.max} value={r.price.marketPriceRub.median} />
-          <p style={{ fontSize: 12.5, color: tokens.inkSoft, marginTop: 14 }}>По состоянию на {r.price.asOfDate}. {r.price.depreciationNote}</p>
-        </Card>
-      </section>
 
-      <section style={{ marginBottom: 40 }}>
-        <SectionHeader n="06" title="Чек-лист перед покупкой" />
-        <Card>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {r.checklistBeforeBuying.map((item, i) => (
-              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{ color: tokens.red, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, marginTop: 1 }}>0{i + 1}</span>
-                <span style={{ fontSize: 14 }}>{item}</span>
+          <div style={{ position: 'absolute', top: 140, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '0 20px' }}>
+            <button
+              type="button"
+              onClick={handleUnlock}
+              disabled={unlocking}
+              className="ak-focus ak-cta"
+              style={{
+                fontFamily: "'Anton', sans-serif", fontSize: 16, letterSpacing: '0.02em', padding: '16px 28px', borderRadius: 10,
+                border: 'none', background: tokens.red, color: '#fff', cursor: unlocking ? 'default' : 'pointer', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+              }}
+            >
+              {unlocking ? 'СЕКУНДУ…' : `ПОЛУЧИТЬ ВСЮ ИНФОРМАЦИЮ ПО МОДЕЛИ · ${REPORT_PRICE_LABEL}`}
+            </button>
+            {unlockError && (
+              unlockError.code === 'INSUFFICIENT_BALANCE' ? (
+                <a href="/account" style={{ fontSize: 13, color: tokens.amber }}>Не хватает баланса — пополнить →</a>
+              ) : (
+                <p style={{ fontSize: 13, color: tokens.red, textAlign: 'center' }}>{unlockError.message}</p>
+              )
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="02" title="Типичные проблемы" />
+            {r.problems.byEngine.map((group) => (
+              <div key={group.engine} style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: tokens.inkSoft, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Мотор {group.engine}
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {group.commonIssues.map((issue) => {
+                    const sev = SEVERITY[issue.severity];
+                    return (
+                      <div key={issue.title} className="ak-issue" style={{ '--sev-color': sev.color, '--sev-bg': sev.bg }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                          <strong style={{ fontSize: 14.5 }}>{issue.title}</strong>
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: sev.color, whiteSpace: 'nowrap' }}>{sev.label}</span>
+                        </div>
+                        <p style={{ fontSize: 13.5, color: tokens.inkSoft, margin: 0, lineHeight: 1.5 }}>{issue.description}</p>
+                        {issue.mileageOrAgeHint && (
+                          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, color: tokens.inkSoft, margin: '6px 0 0' }}>⌁ обычно на {issue.mileageOrAgeHint}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ))}
+          </section>
+
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="03" title="Расходы в год" />
+            <Card style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
+              <div>
+                <div style={{ fontSize: 12, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Топливо</div>
+                <RangeBar min={r.costs.fuelPerYearRub.min} max={r.costs.fuelPerYearRub.max} value={r.costs.fuelPerYearRub.max} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>ТО и запчасти</div>
+                <RangeBar min={r.costs.maintenancePerYearRub.min} max={r.costs.maintenancePerYearRub.max} value={r.costs.maintenancePerYearRub.max} />
+              </div>
+              <div style={{ gridColumn: '1 / -1', paddingTop: 12, borderTop: `1px dashed ${tokens.line}` }}>
+                <span style={{ fontSize: 12, color: tokens.inkSoft }}>
+                  Доступность запчастей: <strong style={{ color: tokens.ink }}>{PARTS_LABEL[r.costs.partsAvailability]}</strong>. {r.costs.partsNote}
+                </span>
+              </div>
+            </Card>
+          </section>
+
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="04" title="Страховка и налог" />
+            <Card style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
+              <div>
+                <div style={{ fontSize: 12, color: tokens.inkSoft, marginBottom: 4 }}>ОСАГО / год</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 600 }}>{fmtRub(r.insurance.osagoPerYearRub.min)} – {fmtRub(r.insurance.osagoPerYearRub.max)}</div>
+              </div>
+              {r.insurance.kaskoPerYearRub && (
+                <div>
+                  <div style={{ fontSize: 12, color: tokens.inkSoft, marginBottom: 4 }}>КАСКО / год</div>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 17, fontWeight: 600 }}>{fmtRub(r.insurance.kaskoPerYearRub.min)} – {fmtRub(r.insurance.kaskoPerYearRub.max)}</div>
+                </div>
+              )}
+              <div style={{ gridColumn: '1 / -1', fontSize: 12.5, color: tokens.inkSoft, paddingTop: 12, borderTop: `1px dashed ${tokens.line}` }}>
+                {r.insurance.transportTaxNote}
+              </div>
+            </Card>
+          </section>
+
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="05" title="Цена на рынке" />
+            <Card>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 34, fontWeight: 600, color: tokens.red }}>{fmtRub(r.price.marketPriceRub.median)}</div>
+                <div style={{ fontSize: 13, color: tokens.inkSoft }}>медиана · диапазон {fmtRub(r.price.marketPriceRub.min)} – {fmtRub(r.price.marketPriceRub.max)}</div>
+              </div>
+              <RangeBar min={r.price.marketPriceRub.min} max={r.price.marketPriceRub.max} value={r.price.marketPriceRub.median} />
+              <p style={{ fontSize: 12.5, color: tokens.inkSoft, marginTop: 14 }}>По состоянию на {r.price.asOfDate}. {r.price.depreciationNote}</p>
+            </Card>
+          </section>
+
+          <section style={{ marginBottom: 40 }}>
+            <SectionHeader n="06" title="Чек-лист перед покупкой" />
+            <Card>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {r.checklistBeforeBuying.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ color: tokens.red, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, marginTop: 1 }}>0{i + 1}</span>
+                    <span style={{ fontSize: 14 }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </section>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={addedToCompare}
+              onClick={() => {
+                addToCart({ ...car, title: `${car.brand} ${car.model} ${car.yearFrom}` });
+                setAddedToCompare(true);
+              }}
+              className="ak-focus ak-cta"
+              style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: '0.02em', padding: '13px 22px', borderRadius: 8, border: 'none', background: addedToCompare ? tokens.line : tokens.red, color: '#fff', cursor: addedToCompare ? 'default' : 'pointer' }}
+            >
+              {addedToCompare ? '✓ ДОБАВЛЕНО В СРАВНЕНИЕ' : 'ДОБАВИТЬ К СРАВНЕНИЮ'}
+            </button>
+            {addedToCompare && (
+              <a href="/compare" className="ak-focus" style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: '0.02em', padding: '13px 22px', borderRadius: 8, border: `1px solid ${tokens.line}`, color: tokens.ink, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                ПЕРЕЙТИ К СРАВНЕНИЮ →
+              </a>
+            )}
           </div>
-        </Card>
-      </section>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          disabled={addedToCompare}
-          onClick={() => {
-            addToCart({ ...car, title: `${car.brand} ${car.model} ${car.yearFrom}` });
-            setAddedToCompare(true);
-          }}
-          className="ak-focus ak-cta"
-          style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: '0.02em', padding: '13px 22px', borderRadius: 8, border: 'none', background: addedToCompare ? tokens.line : tokens.red, color: '#fff', cursor: addedToCompare ? 'default' : 'pointer' }}
-        >
-          {addedToCompare ? '✓ ДОБАВЛЕНО В СРАВНЕНИЕ' : 'ДОБАВИТЬ К СРАВНЕНИЮ'}
-        </button>
-        {addedToCompare && (
-          <a href="/compare" className="ak-focus" style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: '0.02em', padding: '13px 22px', borderRadius: 8, border: `1px solid ${tokens.line}`, color: tokens.ink, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-            ПЕРЕЙТИ К СРАВНЕНИЮ →
-          </a>
-        )}
-      </div>
-
-      <div style={{ marginTop: 32 }}>
-        <FeedbackWidget userId={userId} carVariantId={state.data.carVariantId} />
-      </div>
+          <div style={{ marginTop: 32 }}>
+            <FeedbackWidget userId={userId} carVariantId={state.data.carVariantId} />
+          </div>
+        </>
+      )}
     </>,
   );
 }

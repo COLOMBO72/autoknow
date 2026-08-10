@@ -48,9 +48,7 @@ npm install -g pm2
 ```bash
 sudo -u postgres psql
 ```
-
 Внутри psql:
-
 ```sql
 CREATE DATABASE autoknow;
 CREATE USER autoknow_user WITH ENCRYPTED PASSWORD 'придумай-надёжный-пароль';
@@ -59,7 +57,6 @@ GRANT ALL PRIVILEGES ON DATABASE autoknow TO autoknow_user;
 ```
 
 Строка для `DATABASE_URL`:
-
 ```
 postgresql://autoknow_user:придумай-надёжный-пароль@localhost:5432/autoknow
 ```
@@ -87,7 +84,6 @@ npm run build
 ```
 
 Чек-лист `.env` для прода:
-
 ```
 DATABASE_URL=postgresql://autoknow_user:...@localhost:5432/autoknow
 AI_API_KEY=<реальный ключ AITunnel>
@@ -107,13 +103,11 @@ npm install
 cp .env.local.example .env.local
 nano .env.local
 ```
-
 ```
 NEXT_PUBLIC_API_BASE_URL=https://api.autoknow.ru
 NEXT_PUBLIC_SITE_URL=https://autoknow.ru
 NEXT_PUBLIC_ADMIN_EMAIL=fizikaestw@gmail.com
 ```
-
 ```bash
 npm run build
 ```
@@ -122,10 +116,10 @@ npm run build
 
 ```bash
 cd /var/www/autoknow/backend
-pm2 start dist/main.js --name autoknow-backend
+pm2 start dist/main.js --name autoknow-backend -i max   # -i max = кластер на все ядра CPU
 
 cd /var/www/autoknow/frontend
-pm2 start npm --name autoknow-frontend -- start -- -p 3001
+pm2 start npm --name autoknow-frontend -- start -- -p 3002
 
 pm2 save
 pm2 startup   # выведет одну команду — скопируй и выполни её, чтобы pm2 поднимался при перезагрузке сервера
@@ -133,18 +127,18 @@ pm2 startup   # выведет одну команду — скопируй и �
 
 Полезные команды: `pm2 logs`, `pm2 restart autoknow-backend`, `pm2 status`.
 
+**Важно при кластере (`-i max`):** ограничитель одновременных AI-запросов (`AI_MAX_CONCURRENT`) считает только в рамках одного процесса — при 4 ядрах реальный потолок будет `AI_MAX_CONCURRENT × 4`, не общий. Плюс у каждого процесса свой пул соединений с БД — если `AI_MAX_CONCURRENT` и число ядер большие, стоит явно ограничить пул в `DATABASE_URL`, добавив `?connection_limit=10` в конец строки, и свериться, что `max_connections` в самом Postgres (`postgresql.conf`) с запасом это покрывает.
+
 ## 8. nginx — конфиг для сайта
 
-nano /etc/nginx/sites-available/autoknow.ru
 `/etc/nginx/sites-available/autoknow.ru`:
-
 ```nginx
 server {
     listen 80;
     server_name autoknow.ru;
 
     location / {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://localhost:3002;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -156,7 +150,6 @@ server {
 ```
 
 `/etc/nginx/sites-available/api.autoknow.ru`:
-
 ```nginx
 server {
     listen 80;
@@ -172,7 +165,6 @@ server {
 ```
 
 Включить и проверить:
-
 ```bash
 ln -s /etc/nginx/sites-available/autoknow.ru /etc/nginx/sites-enabled/
 ln -s /etc/nginx/sites-available/api.autoknow.ru /etc/nginx/sites-enabled/
@@ -185,7 +177,6 @@ systemctl reload nginx
 ```bash
 certbot --nginx -d autoknow.ru -d api.autoknow.ru
 ```
-
 Certbot сам поправит nginx-конфиги на HTTPS и настроит автопродление.
 
 ## 10. Файрвол
@@ -195,17 +186,14 @@ ufw allow OpenSSH
 ufw allow 'Nginx Full'
 ufw enable
 ```
-
-Порты 3000/3001 наружу открывать не нужно — к ним обращается только nginx на самом сервере (через `localhost`).
+Порты 3000/3002 наружу открывать не нужно — к ним обращается только nginx на самом сервере (через `localhost`).
 
 ## 11. Последний штрих — вебхук ЮKassa
 
 В личном кабинете ЮKassa (Настройки → HTTP-уведомления) указать:
-
 ```
 https://api.autoknow.ru/billing/webhook/yookassa
 ```
-
 Без этого баланс не будет зачисляться автоматически после оплаты.
 
 ## Обновление после деплоя (когда пришлю новый код)

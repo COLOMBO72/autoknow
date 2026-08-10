@@ -136,7 +136,7 @@ export default function ComparePage() {
               <div style={{ fontFamily: "'Anton', sans-serif", fontSize: 16, letterSpacing: '0.01em', marginBottom: 4, paddingRight: 16 }}>
                 {cartCars[i]?.title ?? `${cartCars[i]?.brand} ${cartCars[i]?.model}`}
               </div>
-              {!c.alreadyOwned && <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: tokens.red }}>+30 ₽ — списано сейчас</div>}
+              {!c.alreadyOwned && <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: tokens.red }}>+79 ₽ — списано сейчас</div>}
             </div>
           ))}
 

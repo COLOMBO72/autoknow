@@ -313,7 +313,7 @@ export default function HomePage() {
               cursor: canSubmit ? 'pointer' : 'not-allowed',
             }}
           >
-            {submitting ? 'СЕКУНДУ…' : 'ПОКАЗАТЬ ДОСЬЕ · 30 ₽'}
+            {submitting ? 'СЕКУНДУ…' : 'ПОКАЗАТЬ ДОСЬЕ'}
           </button>
           {submitError && <p style={{ color: tokens.red, fontSize: 13, marginTop: 10 }}>{submitError}</p>}
         </div>

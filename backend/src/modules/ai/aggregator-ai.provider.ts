@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConcurrencyLimiter } from './concurrency-limiter';
 import {
   AiProvider,
   StructuredGenerationRequest,
@@ -34,6 +35,8 @@ export class AggregatorAiProvider implements AiProvider {
   private readonly fallbackModel: string | null;
   private readonly fallbackBaseUrl: string | null;
 
+  private readonly limiter: ConcurrencyLimiter;
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
@@ -55,9 +58,15 @@ export class AggregatorAiProvider implements AiProvider {
       this.fallbackClient = null;
       this.fallbackModel = null;
     }
+
+    this.limiter = new ConcurrencyLimiter(Number(this.config.get('AI_MAX_CONCURRENT') ?? 8));
   }
 
   async generateStructured(req: StructuredGenerationRequest): Promise<StructuredGenerationResult> {
+    return this.limiter.run(() => this.generateStructuredInner(req));
+  }
+
+  private async generateStructuredInner(req: StructuredGenerationRequest): Promise<StructuredGenerationResult> {
     try {
       return await this.callAndLog('primary', this.primaryClient, this.primaryModel, this.primaryBaseUrl, req);
     } catch (err) {

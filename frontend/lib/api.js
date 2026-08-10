@@ -31,6 +31,8 @@ export const api = {
     request(`/catalog/${encodeURIComponent(brand)}/${encodeURIComponent(model)}/variants`),
   purchaseReport: (userId, car) =>
     request('/reports/purchase', { method: 'POST', body: JSON.stringify({ userId, car }) }),
+  previewReport: (userId, car) =>
+    request('/reports/preview', { method: 'POST', body: JSON.stringify({ userId, car }) }),
   compareReports: (userId, cars) =>
     request('/reports/compare', { method: 'POST', body: JSON.stringify({ userId, cars }) }),
   topup: (userId, amountKopeks) =>
