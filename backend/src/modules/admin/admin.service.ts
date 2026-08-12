@@ -7,6 +7,7 @@ import {
   costsSchema,
   insuranceSchema,
   priceSchema,
+  checklistSchema,
 } from '../reports/car-report.schema';
 import { calculateExpiresAt } from '../reports/report-ttl.policy';
 
@@ -16,6 +17,7 @@ const BLOCK_SCHEMAS: Record<ReportBlockType, { parse: (v: unknown) => unknown }>
   COSTS: costsSchema,
   INSURANCE: insuranceSchema,
   PRICE: priceSchema,
+  CHECKLIST: checklistSchema,
 };
 
 @Injectable()
@@ -154,6 +156,10 @@ export class AdminService {
       update: { content: validated as Prisma.InputJsonValue, generatedAt: now, expiresAt: calculateExpiresAt(type, now), aiModel: 'admin-manual-edit' },
       create: { carVariantId, type, content: validated as Prisma.InputJsonValue, expiresAt: calculateExpiresAt(type, now), aiModel: 'admin-manual-edit' },
     });
+  }
+
+  async setCarVariantPhoto(carVariantId: string, photoUrl: string) {
+    return this.prisma.carVariant.update({ where: { id: carVariantId }, data: { photoUrl } });
   }
 
   async topupByEmail(email: string, amountKopeks: number) {

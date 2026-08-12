@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { tokens, fmtRub } from '../../lib/tokens';
-import { api } from '../../lib/api';
+import { api, photoUrl } from '../../lib/api';
 import { getAuthToken, isLoggedIn } from '../../lib/session';
 
 function Card({ children, style }) {
@@ -222,11 +222,52 @@ const BLOCK_LABELS = {
   COSTS: 'Расходы',
   INSURANCE: 'Страховка',
   PRICE: 'Цена',
+  CHECKLIST: 'Чек-лист',
 };
+
+function PhotoUploader({ carVariant, onUploaded }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const updated = await api.adminUploadCarVariantPhoto(getAuthToken(), carVariant.id, file);
+      onUploaded(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 20, padding: 14, border: `1px dashed ${tokens.line}`, borderRadius: 8 }}>
+      {carVariant.photoUrl ? (
+        <img src={photoUrl(carVariant.photoUrl)} alt="" style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 6 }} />
+      ) : (
+        <div style={{ width: 80, height: 60, borderRadius: 6, background: tokens.line, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: tokens.inkSoft, textAlign: 'center' }}>
+          нет фото
+        </div>
+      )}
+      <div>
+        <label style={{ fontSize: 12, color: tokens.ink, cursor: 'pointer', border: `1px solid ${tokens.line}`, borderRadius: 6, padding: '7px 12px', display: 'inline-block' }}>
+          {uploading ? 'Загружаю…' : carVariant.photoUrl ? 'Заменить фото' : 'Загрузить фото'}
+          <input type="file" accept="image/*" onChange={handleFile} disabled={uploading} style={{ display: 'none' }} />
+        </label>
+        {error && <p style={{ fontSize: 11.5, color: tokens.red, margin: '6px 0 0' }}>{error}</p>}
+      </div>
+    </div>
+  );
+}
 
 function ReportEditor({ presetCarVariantId }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [searchError, setSearchError] = useState(null);
   const [selected, setSelected] = useState(null); // { carVariant, blocks }
   const [drafts, setDrafts] = useState({}); // type -> текст textarea
   const [status, setStatus] = useState({}); // type -> 'saving' | 'ok' | { error }
@@ -249,8 +290,14 @@ function ReportEditor({ presetCarVariantId }) {
 
   async function handleSearch(e) {
     e.preventDefault();
-    const r = await api.adminSearchCarVariants(getAuthToken(), query);
-    setResults(r);
+    setSearchError(null);
+    try {
+      const r = await api.adminSearchCarVariants(getAuthToken(), query);
+      setResults(r);
+      if (r.length === 0) setSearchError('Ничего не найдено — проверь марку/модель (ищет по вхождению в слово)');
+    } catch (err) {
+      setSearchError(err.message);
+    }
   }
 
   async function handleSave(type) {
@@ -276,6 +323,7 @@ function ReportEditor({ presetCarVariantId }) {
           НАЙТИ
         </button>
       </form>
+      {searchError && <p style={{ fontSize: 12.5, color: tokens.amber, marginBottom: 14 }}>{searchError}</p>}
 
       {results.length > 0 && !selected && (
         <div style={{ marginBottom: 14 }}>
@@ -298,6 +346,8 @@ function ReportEditor({ presetCarVariantId }) {
               выбрать другую
             </button>
           </div>
+
+          <PhotoUploader carVariant={selected.carVariant} onUploaded={(updated) => setSelected((s) => ({ ...s, carVariant: updated }))} />
 
           {Object.keys(BLOCK_LABELS).map((type) => {
             if (drafts[type] === undefined) return null;

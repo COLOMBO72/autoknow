@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { tokens, fmtRub } from '../../lib/tokens';
-import { api } from '../../lib/api';
+import { tokens, fmtRub, REPORT_PRICE_KOPEKS } from '../../lib/tokens';
+import { api, photoUrl } from '../../lib/api';
 import { ensureUserId } from '../../lib/session';
 import { addToCart } from '../../lib/compareCart';
 import SiteFooter from '../../components/SiteFooter';
@@ -18,7 +18,7 @@ const SEVERITY = {
 };
 const FUEL_LABEL = { petrol: 'бензин', diesel: 'дизель', hybrid: 'гибрид', electric: 'электро', gas: 'газ' };
 const PARTS_LABEL = { excellent: 'отличная', good: 'хорошая', limited: 'ограниченная', poor: 'слабая' };
-const REPORT_PRICE_LABEL = '79 ₽';
+const REPORT_PRICE_LABEL = fmtRub(REPORT_PRICE_KOPEKS / 100);
 
 function SectionHeader({ n, title }) {
   return (
@@ -61,16 +61,13 @@ function SkeletonBar({ width = '100%' }) {
   return <div style={{ height: 12, width, borderRadius: 4, background: tokens.line, marginBottom: 8 }} />;
 }
 
-function SkeletonSection({ n, title, lines = 3 }) {
+function SkeletonCard({ lines = 3 }) {
   return (
-    <section style={{ marginBottom: 36 }}>
-      <SectionHeader n={n} title={title} />
-      <Card>
-        {Array.from({ length: lines }).map((_, i) => (
-          <SkeletonBar key={i} width={i % 3 === 0 ? '60%' : '90%'} />
-        ))}
-      </Card>
-    </section>
+    <Card>
+      {Array.from({ length: lines }).map((_, i) => (
+        <SkeletonBar key={i} width={i % 3 === 0 ? '60%' : '90%'} />
+      ))}
+    </Card>
   );
 }
 
@@ -121,10 +118,23 @@ function ReportContent() {
     setUnlocking(true);
     try {
       const result = await api.purchaseReport(userId, car);
-      setState({ loading: false, error: null, data: { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId } });
+      setState({ loading: false, error: null, data: { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId, photoUrl: result.photoUrl } });
       if (result.isFirstPurchase) setShowAchievement(true);
     } catch (err) {
-      setUnlockError(err);
+      if (err.code === 'INSUFFICIENT_BALANCE') {
+        // Не показываем "не хватает баланса, нажми сюда" — сразу ведём
+        // оплачивать ровно один отчёт, с возвратом на эту же страницу.
+        try {
+          const returnPath = window.location.pathname + window.location.search;
+          const topup = await api.topup(userId, REPORT_PRICE_KOPEKS, returnPath);
+          window.location.href = topup.confirmationUrl;
+          return; // уходим со страницы, unlocking можно не сбрасывать
+        } catch (topupErr) {
+          setUnlockError(topupErr);
+        }
+      } else {
+        setUnlockError(err);
+      }
     } finally {
       setUnlocking(false);
     }
@@ -179,6 +189,23 @@ function ReportContent() {
 
       <a href="/" className="ak-link" style={{ display: 'inline-block', margin: '20px 0' }}>← Назад к выбору</a>
 
+      {state.data.photoUrl ? (
+        <img
+          src={photoUrl(state.data.photoUrl)}
+          alt={`${car.brand} ${car.model} ${car.yearFrom}`}
+          style={{ width: '100%', maxHeight: 360, objectFit: 'cover', borderRadius: 10, marginBottom: 20, border: `1px solid ${tokens.line}` }}
+        />
+      ) : (
+        <div
+          style={{
+            width: '100%', height: 160, borderRadius: 10, marginBottom: 20, border: `1px dashed ${tokens.line}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: tokens.inkSoft, fontSize: 12.5,
+          }}
+        >
+          Фото этой машины пока нет в базе
+        </div>
+      )}
+
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontFamily: "'Anton', sans-serif", fontSize: 'clamp(28px, 4.5vw, 42px)', margin: '0 0 8px', letterSpacing: '0.01em' }}>
           {car.brand.toUpperCase()} {car.model.toUpperCase()} {car.yearFrom}
@@ -218,13 +245,23 @@ function ReportContent() {
               <span key={b} style={{ fontSize: 12, border: `1px solid ${tokens.line}`, borderRadius: 20, padding: '4px 10px', color: tokens.inkSoft }}>{b}</span>
             ))}
           </div>
+          {r.specs.trims && r.specs.trims.length > 0 && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${tokens.line}` }}>
+              <div style={{ fontSize: 11.5, color: tokens.inkSoft, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Комплектации</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {r.specs.trims.map((t) => (
+                  <span key={t} style={{ fontSize: 12, background: tokens.redSoft, color: tokens.ink, borderRadius: 20, padding: '4px 10px' }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       </section>
 
       {locked ? (
         <div style={{ position: 'relative' }}>
           {state.data.teaser && (
-            <Card style={{ marginBottom: 20, borderColor: tokens.amber }}>
+            <Card style={{ marginBottom: 28, borderColor: tokens.amber }}>
               <p style={{ margin: 0, fontSize: 14 }}>
                 Найдено <strong>{state.data.teaser.totalIssues}</strong> {state.data.teaser.totalIssues === 1 ? 'проблема' : 'проблемы/проблем'}
                 {state.data.teaser.hasCritical && <span style={{ color: tokens.red }}> — есть критичные</span>}
@@ -233,35 +270,66 @@ function ReportContent() {
             </Card>
           )}
 
-          <div style={{ filter: 'blur(5px)', opacity: 0.45, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
-            <SkeletonSection n="02" title="Типичные проблемы" lines={Math.max(3, state.data.teaser?.totalIssues ?? 3)} />
-            <SkeletonSection n="03" title="Расходы в год" lines={3} />
-            <SkeletonSection n="04" title="Страховка и налог" lines={2} />
-            <SkeletonSection n="05" title="Цена на рынке" lines={2} />
-            <SkeletonSection n="06" title="Чек-лист перед покупкой" lines={state.data.teaser?.checklistItemsCount ?? 4} />
-          </div>
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="02" title="Типичные проблемы" />
+            <div style={{ filter: 'blur(5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+              <SkeletonCard lines={Math.max(3, state.data.teaser?.totalIssues ?? 3)} />
+            </div>
+          </section>
 
-          <div style={{ position: 'absolute', top: 140, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '0 20px' }}>
-            <button
-              type="button"
-              onClick={handleUnlock}
-              disabled={unlocking}
-              className="ak-focus ak-cta"
-              style={{
-                fontFamily: "'Anton', sans-serif", fontSize: 16, letterSpacing: '0.02em', padding: '16px 28px', borderRadius: 10,
-                border: 'none', background: tokens.red, color: '#fff', cursor: unlocking ? 'default' : 'pointer', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-              }}
-            >
-              {unlocking ? 'СЕКУНДУ…' : `ПОЛУЧИТЬ ВСЮ ИНФОРМАЦИЮ ПО МОДЕЛИ · ${REPORT_PRICE_LABEL}`}
-            </button>
-            {unlockError && (
-              unlockError.code === 'INSUFFICIENT_BALANCE' ? (
-                <a href="/account" style={{ fontSize: 13, color: tokens.amber }}>Не хватает баланса — пополнить →</a>
-              ) : (
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="03" title="Расходы в год" />
+            <div style={{ filter: 'blur(5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+              <SkeletonCard lines={3} />
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="04" title="Страховка и налог" />
+            <div style={{ filter: 'blur(5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+              <SkeletonCard lines={2} />
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36 }}>
+            <SectionHeader n="05" title="Цена на рынке" />
+            <div style={{ filter: 'blur(5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+              <SkeletonCard lines={2} />
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36, position: 'relative' }}>
+            <SectionHeader n="06" title="Чек-лист перед покупкой" />
+            <div style={{ filter: 'blur(5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
+              <SkeletonCard lines={state.data.teaser?.checklistItemsCount ?? 4} />
+            </div>
+
+            <div style={{ position: 'absolute', top: 40, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '0 20px' }}>
+              <button
+                type="button"
+                onClick={handleUnlock}
+                disabled={unlocking}
+                className="ak-focus ak-cta"
+                style={{
+                  fontFamily: "'Anton', sans-serif", letterSpacing: '0.02em', padding: '18px 32px', borderRadius: 10,
+                  border: 'none', background: tokens.red, color: '#fff', cursor: unlocking ? 'default' : 'pointer', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  textAlign: 'center', lineHeight: 1.4,
+                }}
+              >
+                {unlocking ? (
+                  <span style={{ fontSize: 16 }}>СЕКУНДУ…</span>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 15 }}>ПОЛУЧИТЬ ВСЮ ИНФОРМАЦИЮ ПО МОДЕЛИ</div>
+                    <div style={{ fontSize: 22, color: tokens.amber, marginTop: 4 }}>{REPORT_PRICE_LABEL}</div>
+                  </>
+                )}
+              </button>
+              {unlockError && unlockError.code !== 'INSUFFICIENT_BALANCE' && (
                 <p style={{ fontSize: 13, color: tokens.red, textAlign: 'center' }}>{unlockError.message}</p>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          </section>
         </div>
       ) : (
         <>

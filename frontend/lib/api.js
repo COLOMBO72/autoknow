@@ -1,9 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
+export function photoUrl(path) {
+  if (!path) return null;
+  return `${API_BASE}${path}`;
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     let body = null;
@@ -35,8 +40,8 @@ export const api = {
     request('/reports/preview', { method: 'POST', body: JSON.stringify({ userId, car }) }),
   compareReports: (userId, cars) =>
     request('/reports/compare', { method: 'POST', body: JSON.stringify({ userId, cars }) }),
-  topup: (userId, amountKopeks) =>
-    request('/billing/topup', { method: 'POST', body: JSON.stringify({ userId, amountKopeks }) }),
+  topup: (userId, amountKopeks, returnPath) =>
+    request('/billing/topup', { method: 'POST', body: JSON.stringify({ userId, amountKopeks, returnPath }) }),
 
   register: (email, password, consentGiven, existingUserId) =>
     request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, consentGiven, existingUserId }) }),
@@ -83,4 +88,15 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ content }),
     }),
+  adminUploadCarVariantPhoto: async (token, id, file) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const res = await fetch(`${API_BASE}/admin/car-variants/${id}/photo`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }, // Content-Type НЕ ставим сами — браузер сам проставит с boundary для multipart
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Не удалось загрузить фото (${res.status})`);
+    return res.json();
+  },
 };

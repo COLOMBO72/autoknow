@@ -18,6 +18,7 @@ export const specsSchema = z.object({
   ),
   bodyTypes: z.array(z.string()),
   driveTypes: z.array(z.string()),
+  trims: z.array(z.string()).optional(), // названия комплектаций, например "Classic", "Comfort", "Prestige"
 });
 
 export const problemsSchema = z.object({
@@ -56,13 +57,15 @@ export const priceSchema = z.object({
   depreciationNote: z.string().optional(),
 });
 
+export const checklistSchema = z.array(z.string()); // чек-лист для осмотра при покупке
+
 export const carReportSchema = z.object({
   specs: specsSchema,
   problems: problemsSchema,
   costs: costsSchema,
   insurance: insuranceSchema,
   price: priceSchema,
-  checklistBeforeBuying: z.array(z.string()), // чек-лист для осмотра при покупке
+  checklistBeforeBuying: checklistSchema,
 });
 
 export type CarReport = z.infer<typeof carReportSchema>;

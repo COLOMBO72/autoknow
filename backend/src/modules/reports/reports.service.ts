@@ -22,6 +22,7 @@ export interface ReportResult {
   report: CarReport;
   fromCache: boolean;
   carVariantId: string;
+  photoUrl: string | null;
 }
 
 const ALL_BLOCK_TYPES = Object.values(ReportBlockType);
@@ -135,6 +136,7 @@ export class ReportsService {
         report: this.assembleReportFromBlocks(existingBlocks),
         fromCache: true,
         carVariantId: carVariant.id,
+        photoUrl: carVariant.photoUrl,
       };
     }
 
@@ -166,7 +168,7 @@ export class ReportsService {
       ),
     );
 
-    return { report, fromCache: false, carVariantId: carVariant.id };
+    return { report, fromCache: false, carVariantId: carVariant.id, photoUrl: carVariant.photoUrl };
   }
 
   private async generateFreshReport(input: CarVariantInput): Promise<CarReport> {
@@ -197,6 +199,7 @@ export class ReportsService {
       COSTS: 'costs',
       INSURANCE: 'insurance',
       PRICE: 'price',
+      CHECKLIST: 'checklistBeforeBuying',
     };
     return map[type];
   }
@@ -209,9 +212,7 @@ export class ReportsService {
       costs: byType.COSTS,
       insurance: byType.INSURANCE,
       price: byType.PRICE,
-      // чек-лист не кэшируем блоком — генерируем свежим при полной регенерации,
-      // при чистом кэш-хите берём заглушку; для MVP это компромисс, см. README.
-      checklistBeforeBuying: [],
+      checklistBeforeBuying: byType.CHECKLIST,
     });
   }
 }

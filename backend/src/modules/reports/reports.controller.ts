@@ -44,10 +44,10 @@ export class ReportsController {
     const result = await this.reports.getOrGenerateReport(dto.car);
 
     if (owned) {
-      return { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId };
+      return { report: result.report, locked: false, fromCache: result.fromCache, carVariantId: result.carVariantId, photoUrl: result.photoUrl };
     }
 
-    return { report: redactReport(result.report), locked: true, fromCache: result.fromCache, carVariantId: result.carVariantId };
+    return { report: redactReport(result.report), locked: true, fromCache: result.fromCache, carVariantId: result.carVariantId, photoUrl: result.photoUrl };
   }
 
   @Post('purchase')

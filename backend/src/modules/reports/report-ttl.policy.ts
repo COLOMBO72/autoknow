@@ -7,6 +7,7 @@ export const REPORT_TTL_DAYS: Record<ReportBlockType, number> = {
   COSTS: 90, // ТО/запчасти/топливо — цены дрейфуют, но не резко
   INSURANCE: 120, // тарифы ОСАГО/КАСКО меняются не часто
   PRICE: 10, // самый волатильный блок — рыночная цена
+  CHECKLIST: 365, // чек-лист перед покупкой почти не меняется со временем
 };
 
 export function calculateExpiresAt(type: ReportBlockType, from: Date = new Date()): Date {

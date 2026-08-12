@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 interface TopupDto {
   userId: string;
   amountKopeks: number; // сумма пакета, например 30000 = 300 руб за 10 машин
+  returnPath?: string; // куда вернуть после оплаты, например /report?brand=kia&model=rio&yearFrom=2019
 }
 
 interface YookassaWebhookDto {
@@ -26,7 +27,7 @@ export class BillingController {
 
   @Post('topup')
   async topup(@Body() dto: TopupDto) {
-    return this.yookassa.createTopupPayment(dto.userId, dto.amountKopeks);
+    return this.yookassa.createTopupPayment(dto.userId, dto.amountKopeks, dto.returnPath);
   }
 
   @Post('webhook/yookassa')

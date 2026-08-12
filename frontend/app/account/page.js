@@ -9,8 +9,8 @@ import SiteHeader from '../../components/SiteHeader';
 import FeedbackWidget from '../../components/FeedbackWidget';
 
 const PACKAGES = [
-  { id: 'p10', reports: 10, price: 700 }, // 70₽/шт при разовой цене 79₽
-  { id: 'p30', reports: 30, price: 1900 }, // ~63₽/шт
+  { id: 'p1', reports: 1, price: 79 },
+  { id: 'p5', reports: 5, price: 395 },
 ];
 
 function Card({ children, style }) {
@@ -73,7 +73,12 @@ function BuyerGuide() {
 }
 
 function SettingsTab({ userId }) {
-  const loggedIn = isLoggedIn();
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState(null);
+  useEffect(() => {
+    setLoggedIn(isLoggedIn());
+    setCurrentEmail(getUserEmail());
+  }, []);
   const [emailField, setEmailField] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -128,7 +133,7 @@ function SettingsTab({ userId }) {
 
       <Card>
         <h3 style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, margin: '0 0 12px', color: tokens.ink }}>ПОЧТА</h3>
-        <p style={{ fontSize: 12.5, color: tokens.inkSoft, marginBottom: 10 }}>Сейчас: {getUserEmail() || '—'}</p>
+        <p style={{ fontSize: 12.5, color: tokens.inkSoft, marginBottom: 10 }}>Сейчас: {currentEmail || '—'}</p>
         <form onSubmit={handleChangeEmail}>
           <input type="email" required placeholder="Новый email" value={emailField} onChange={(e) => setEmailField(e.target.value)} style={inputStyle} />
           <button type="submit" style={{ fontFamily: "'Anton', sans-serif", fontSize: 13, padding: '9px 16px', borderRadius: 6, border: 'none', background: tokens.line, color: tokens.ink, cursor: 'pointer' }}>
@@ -237,7 +242,7 @@ export default function AccountPage() {
                   <div key={p.id} className="ak-pkg ak-focus" tabIndex={0} role="button" onClick={() => handleTopup(p)}
                     style={{ border: `1px solid ${tokens.line}`, borderRadius: 8, padding: '12px 16px', textAlign: 'center', minWidth: 110 }}>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 17 }}>{p.price} ₽</div>
-                    <div style={{ fontSize: 11.5, color: tokens.inkSoft, marginTop: 2 }}>{p.reports} отчётов</div>
+                    <div style={{ fontSize: 11.5, color: tokens.inkSoft, marginTop: 2 }}>{p.reports} {p.reports === 1 ? 'отчёт' : 'отчётов'}</div>
                   </div>
                 ))}
               </div>

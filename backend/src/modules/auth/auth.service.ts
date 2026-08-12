@@ -60,9 +60,22 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(password, 10);
     const data = { email, passwordHash, consentGivenAt: new Date() };
 
-    const user = existingUserId
-      ? await this.prisma.user.update({ where: { id: existingUserId }, data })
-      : await this.prisma.user.create({ data });
+    // Прикрепляем к существующему id из cookie только если это ещё
+    // настоящий гость (без пароля). Если в браузере уже есть аккаунт с
+    // паролем (человек уже зарегистрирован) — новая регистрация создаёт
+    // ОТДЕЛЬНЫЙ аккаунт, а не переименовывает существующий. Без этой
+    // проверки повторная регистрация в том же браузере тихо стирала бы
+    // email предыдущего аккаунта, и вход под ним переставал бы работать.
+    let user = null;
+    if (existingUserId) {
+      const existing = await this.prisma.user.findUnique({ where: { id: existingUserId } });
+      if (existing && !existing.passwordHash) {
+        user = await this.prisma.user.update({ where: { id: existingUserId }, data });
+      }
+    }
+    if (!user) {
+      user = await this.prisma.user.create({ data });
+    }
 
     return { userId: user.id, token: this.signToken(user.id) };
   }

@@ -116,7 +116,11 @@ npm run build
 
 ```bash
 cd /var/www/autoknow/backend
-pm2 start dist/main.js --name autoknow-backend -i max   # -i max = кластер на все ядра CPU
+pm2 start dist/main.js --name autoknow-backend
+# Кластер-режим (-i max, несколько процессов на разных ядрах) тут намеренно
+# не используется — на слабом VPS с 1-2 ядрами и небольшим RAM несколько
+# копий Node будут скорее конкурировать за память, чем реально ускорять
+# работу. Если позже перейдёшь на более мощный сервер — можно вернуть.
 
 cd /var/www/autoknow/frontend
 pm2 start npm --name autoknow-frontend -- start -- -p 3002

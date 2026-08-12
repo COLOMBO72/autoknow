@@ -18,3 +18,9 @@ export const FONT_IMPORT_URL =
 export function fmtRub(n) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' ₽';
 }
+
+// Единый источник цены для фронта. ВАЖНО: реальная цена, которая
+// списывается, задаётся на бэкенде через REPORT_PRICE_KOPEKS в .env —
+// если меняешь цену, поменяй в обоих местах.
+export const REPORT_PRICE_RUB = 79;
+export const REPORT_PRICE_KOPEKS = 7900;

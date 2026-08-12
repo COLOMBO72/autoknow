@@ -21,8 +21,9 @@ export class YookassaService {
    * Создаёт платёж на пополнение баланса. amountKopeks -> рубли с копейками
    * для ЮKassa (у них сумма строкой "300.00", не в копейках).
    */
-  async createTopupPayment(userId: string, amountKopeks: number): Promise<CreatePaymentResult> {
+  async createTopupPayment(userId: string, amountKopeks: number, returnPath?: string): Promise<CreatePaymentResult> {
     const amountRub = (amountKopeks / 100).toFixed(2);
+    const path = returnPath && returnPath.startsWith('/') ? returnPath : '/billing/success';
 
     const response = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
@@ -35,7 +36,7 @@ export class YookassaService {
         amount: { value: amountRub, currency: 'RUB' },
         confirmation: {
           type: 'redirect',
-          return_url: `${this.config.get('APP_URL') ?? ''}/billing/success`,
+          return_url: `${this.config.get('APP_URL') ?? ''}${path}`,
         },
         capture: true,
         description: `Пополнение баланса autoknow, userId=${userId}`,

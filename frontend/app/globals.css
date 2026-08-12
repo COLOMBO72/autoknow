@@ -1,0 +1,28 @@
+/* Без box-sizing: border-box паддинг у любого элемента с width:100%
+   добавляется ПОВЕРХ 100% ширины родителя — на узких экранах это ломает
+   вёрстку почти везде, где есть формы (то есть почти на каждой странице
+   сайта). Один global-reset чинит это разом. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  margin: 0;
+  background: #0b0c0e;
+}
+
+/* Шрифт полей ввода меньше 16px заставляет iOS Safari непроизвольно
+   зумить страницу при тапе в поле. Поднимаем только на мобильных, чтобы
+   не менять вид на десктопе. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
