@@ -11,6 +11,10 @@ export interface StructuredGenerationRequest {
   userPrompt: string;
   /** JSON-схема ответа в виде текстового описания для промпта + валидации zod снаружи */
   responseSchemaName: string;
+  /** По умолчанию true. Выключаем для дешёвых/быстрых проверок (например,
+   * распознавание названия модели из свободного текста), где реальный
+   * поиск в интернете не нужен — так быстрее и дешевле. */
+  useWebSearch?: boolean;
 }
 
 export interface StructuredGenerationResult {

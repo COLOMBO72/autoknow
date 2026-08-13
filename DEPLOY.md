@@ -53,8 +53,11 @@ sudo -u postgres psql
 CREATE DATABASE autoknow;
 CREATE USER autoknow_user WITH ENCRYPTED PASSWORD 'придумай-надёжный-пароль';
 GRANT ALL PRIVILEGES ON DATABASE autoknow TO autoknow_user;
+ALTER USER autoknow_user CREATEDB;
 \q
 ```
+
+`ALTER USER ... CREATEDB` — обязателен: `prisma migrate dev` (в отличие от `migrate deploy`) создаёт временную "теневую" базу для вычисления изменений, без этого права падает с `P3014`.
 
 Строка для `DATABASE_URL`:
 ```

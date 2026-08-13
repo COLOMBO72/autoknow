@@ -114,6 +114,53 @@ function ScanCar() {
   );
 }
 
+function FreeTextRequest({ router }) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState('idle'); // idle | checking | error
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setStatus('checking');
+    setError(null);
+    try {
+      const resolved = await api.resolveFreeText(text.trim());
+      const params = new URLSearchParams({ brand: resolved.brand, model: resolved.model, yearFrom: String(resolved.yearFrom) });
+      router.push(`/report?${params.toString()}`);
+    } catch (err) {
+      setError(err.message);
+      setStatus('idle');
+    }
+  }
+
+  return (
+    <section style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 50px' }}>
+      <div style={{ background: tokens.surface, border: `1px solid ${tokens.line}`, borderRadius: 10, padding: 20 }}>
+        <h3 style={{ fontFamily: "'Anton', sans-serif", fontSize: 15, letterSpacing: '0.02em', margin: '0 0 10px', color: tokens.inkSoft }}>
+          НЕ НАШЛИ АВТОМОБИЛЬ? НАПИШИТЕ ЗДЕСЬ
+        </h3>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder='Например "Mazda 6 2015"'
+            style={{ flex: 1, minWidth: 200, padding: '11px 14px', borderRadius: 6, border: `1px solid ${tokens.line}`, background: '#1C1F24', color: tokens.ink, fontFamily: "'Inter', sans-serif", fontSize: 14 }}
+          />
+          <button
+            type="submit"
+            disabled={status === 'checking' || !text.trim()}
+            style={{ fontFamily: "'Anton', sans-serif", fontSize: 13, padding: '11px 20px', borderRadius: 6, border: 'none', background: tokens.red, color: '#fff', cursor: 'pointer', opacity: status === 'checking' || !text.trim() ? 0.6 : 1 }}
+          >
+            {status === 'checking' ? 'ПРОВЕРЯЕМ…' : 'ПРОВЕРИТЬ'}
+          </button>
+        </form>
+        {error && <p style={{ fontSize: 12.5, color: tokens.amber, marginTop: 10 }}>{error}</p>}
+      </div>
+    </section>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [catalog, setCatalog] = useState({});
@@ -339,6 +386,8 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      <FreeTextRequest router={router} />
 
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px' }}>
         <p style={{ fontSize: 12, color: tokens.inkSoft, maxWidth: 640, lineHeight: 1.6 }}>

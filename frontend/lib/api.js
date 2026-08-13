@@ -32,6 +32,7 @@ export const api = {
   getUserComparisons: (id) => request(`/users/${id}/comparisons`),
   getUserTransactions: (id) => request(`/users/${id}/transactions`),
   getBrands: () => request('/catalog/brands'),
+  resolveFreeText: (text) => request('/catalog/resolve-freetext', { method: 'POST', body: JSON.stringify({ text }) }),
   getKnownVariants: (brand, model) =>
     request(`/catalog/${encodeURIComponent(brand)}/${encodeURIComponent(model)}/variants`),
   purchaseReport: (userId, car) =>

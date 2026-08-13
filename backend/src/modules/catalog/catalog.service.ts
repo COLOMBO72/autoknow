@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CAR_SEED_DATASET } from '../../data/car-seed-dataset';
+import { AI_PROVIDER, AiProvider } from '../ai/ai-provider.interface';
+import { Inject } from '@nestjs/common';
+import { buildFreeTextResolutionPrompt, freeTextResolutionSchema } from './free-text-resolution';
 
 interface DiscoveredFrom {
   brand: string;
@@ -27,7 +30,10 @@ function union(a: string[], b: string[]): string[] {
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(AI_PROVIDER) private readonly ai: AiProvider,
+  ) {}
 
   /**
    * Вызывается из ReportsService после КАЖДОЙ свежей генерации отчёта.
@@ -76,21 +82,67 @@ export class CatalogService {
   }
 
   /**
-   * Шаг 1-2 формы (марка/модель) — единственное, что физически не может
-   * само себя пополнить (см. обсуждение курицы-и-яйца), поэтому источник —
-   * руками собранный car-seed-dataset, а не БД. Когда список моделей
-   * вырастет настолько, что держать его в коде неудобно — переносим в
-   * отдельную таблицу, сигнатура метода не изменится.
+   * Шаг 1-2 формы (марка/модель). Источник — объединение руками собранного
+   * car-seed-dataset (статика в коде) и таблицы CarCatalogModel (модели,
+   * добавленные динамически через "не нашли машину? напишите" после
+   * проверки ИИ — см. resolveFreeText). Второе не требует пересборки сайта.
    */
-  getBrandModelCatalog(): Record<string, string[]> {
+  async getBrandModelCatalog(): Promise<Record<string, string[]>> {
     const result: Record<string, string[]> = {};
-    for (const entry of CAR_SEED_DATASET) {
-      const brandLabel = capitalize(entry.brand);
-      const modelLabel = capitalize(entry.model);
+
+    const add = (brandRaw: string, modelRaw: string) => {
+      const brandLabel = capitalize(brandRaw);
+      const modelLabel = capitalize(modelRaw);
       if (!result[brandLabel]) result[brandLabel] = [];
       if (!result[brandLabel].includes(modelLabel)) result[brandLabel].push(modelLabel);
+    };
+
+    for (const entry of CAR_SEED_DATASET) {
+      add(entry.brand, entry.model);
     }
+
+    const dynamic = await this.prisma.carCatalogModel.findMany();
+    for (const entry of dynamic) {
+      add(entry.brand, entry.model);
+    }
+
     return result;
+  }
+
+  /** Регистрирует марку+модель в динамическом каталоге — идемпотентно, повторный вызов не страшен. */
+  async addBrandModel(brand: string, model: string): Promise<void> {
+    const b = brand.trim().toLowerCase();
+    const m = model.trim().toLowerCase();
+    await this.prisma.carCatalogModel.upsert({
+      where: { brand_model: { brand: b, model: m } },
+      update: {},
+      create: { brand: b, model: m },
+    });
+  }
+
+  /**
+   * Дешёвая проверка свободного текста ("не нашли машину? напишите") —
+   * БЕЗ веб-поиска, модель просто определяет по своим знаниям, похоже ли
+   * это на реальный автомобиль, и нормализует написание. Полная (дорогая,
+   * с поиском) генерация отчёта запускается только если это подтверждено —
+   * так мусорные запросы не тратят токены и не засоряют базу.
+   */
+  async resolveFreeText(text: string): Promise<{ brand: string; model: string; yearFrom: number }> {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.length > 100) {
+      throw new BadRequestException('Опиши модель короче и понятнее — например "Mazda 6 2015"');
+    }
+
+    const { systemPrompt, userPrompt } = buildFreeTextResolutionPrompt(trimmed);
+    const result = await this.ai.generateStructured({ systemPrompt, userPrompt, responseSchemaName: 'FreeTextResolution', useWebSearch: false });
+
+    const parsed = freeTextResolutionSchema.parse(JSON.parse(result.raw));
+    if (!parsed.valid) {
+      throw new BadRequestException(parsed.reason);
+    }
+
+    await this.addBrandModel(parsed.brand, parsed.model);
+    return { brand: parsed.brand, model: parsed.model, yearFrom: parsed.yearFrom };
   }
 }
 

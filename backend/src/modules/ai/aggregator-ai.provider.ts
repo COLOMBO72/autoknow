@@ -121,7 +121,7 @@ export class AggregatorAiProvider implements AiProvider {
       model,
       instructions: req.systemPrompt,
       input: req.userPrompt,
-      tools: [{ type: 'web_search_preview' }],
+      tools: req.useWebSearch === false ? undefined : [{ type: 'web_search_preview' }],
       text: { format: { type: 'json_object' } },
       temperature: 0.2,
     });
