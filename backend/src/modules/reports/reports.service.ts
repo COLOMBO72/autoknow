@@ -1,12 +1,12 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ReportBlockType, CarReportBlock, Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { AI_PROVIDER, AiProvider } from '../ai/ai-provider.interface';
-import { CarContextProvider } from './car-context.provider';
-import { buildCarReportPrompt } from './car-report.prompt';
-import { carReportSchema, CarReport } from './car-report.schema';
-import { calculateExpiresAt } from './report-ttl.policy';
-import { CatalogService } from '../catalog/catalog.service';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { ReportBlockType, CarReportBlock, Prisma } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import { AI_PROVIDER, AiProvider } from "../ai/ai-provider.interface";
+import { CarContextProvider } from "./car-context.provider";
+import { buildCarReportPrompt } from "./car-report.prompt";
+import { carReportSchema, CarReport } from "./car-report.schema";
+import { calculateExpiresAt } from "./report-ttl.policy";
+import { CatalogService } from "../catalog/catalog.service";
 
 export interface CarVariantInput {
   brand: string;
@@ -30,6 +30,7 @@ const ALL_BLOCK_TYPES = Object.values(ReportBlockType);
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
+  private readonly inFlightGenerations = new Map<string, Promise<CarReport>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -54,7 +55,10 @@ export class ReportsService {
       // (в dev-режиме — двойной вызов эффекта React StrictMode, в проде —
       // просто два реальных запроса почти одновременно). Не ошибка бизнес-
       // логики — забираем уже созданную запись вместо падения.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
         return this.prisma.carVariant.findUniqueOrThrow({
           where: {
             brand_model_generation_yearFrom_yearTo_engine_bodyType: normalized,
@@ -87,11 +91,11 @@ export class ReportsService {
     return {
       brand: input.brand.trim().toLowerCase(),
       model: input.model.trim().toLowerCase(),
-      generation: input.generation?.trim().toLowerCase() ?? '',
+      generation: input.generation?.trim().toLowerCase() ?? "",
       yearFrom: input.yearFrom,
       yearTo: input.yearTo ?? 0,
-      engine: input.engine?.trim().toLowerCase() ?? '',
-      bodyType: input.bodyType?.trim().toLowerCase() ?? '',
+      engine: input.engine?.trim().toLowerCase() ?? "",
+      bodyType: input.bodyType?.trim().toLowerCase() ?? "",
     };
   }
 
@@ -103,7 +107,9 @@ export class ReportsService {
   }
 
   async recordPurchase(userId: string, carVariantId: string) {
-    return this.prisma.purchasedReport.create({ data: { userId, carVariantId } });
+    return this.prisma.purchasedReport.create({
+      data: { userId, carVariantId },
+    });
   }
 
   async countPurchasedReports(userId: string): Promise<number> {
@@ -140,13 +146,33 @@ export class ReportsService {
       };
     }
 
-    this.logger.log(`Кэш-промах/устарел для carVariant ${carVariant.id}, генерирую через AI`);
-    const report = await this.generateFreshReport(input);
+    this.logger.log(
+      `Кэш-промах/устарел для carVariant ${carVariant.id}, генерирую через AI`,
+    );
+
+    // Если на эту же машину уже летит другой запрос (двойной клик, повтор
+    // эффекта React в dev-режиме, две вкладки) — ждём его результат вместо
+    // того чтобы запускать вторую платную генерацию параллельно.
+    let report: CarReport;
+    const inFlight = this.inFlightGenerations.get(carVariant.id);
+    if (inFlight) {
+      report = await inFlight;
+    } else {
+      const promise = this.generateFreshReport(input);
+      this.inFlightGenerations.set(carVariant.id, promise);
+      try {
+        report = await promise;
+      } finally {
+        this.inFlightGenerations.delete(carVariant.id);
+      }
+    }
 
     // Best-effort: копилка каталога не должна ронять основной запрос,
     // если тут что-то пойдёт не так — просто логируем и едем дальше.
     this.catalog.recordDiscoveredVariants(input, report.specs).catch((err) => {
-      this.logger.warn(`Не удалось обновить каталог для ${input.brand} ${input.model}: ${(err as Error).message}`);
+      this.logger.warn(
+        `Не удалось обновить каталог для ${input.brand} ${input.model}: ${(err as Error).message}`,
+      );
     });
 
     await Promise.all(
@@ -168,14 +194,28 @@ export class ReportsService {
       ),
     );
 
-    return { report, fromCache: false, carVariantId: carVariant.id, photoUrl: carVariant.photoUrl };
+    return {
+      report,
+      fromCache: false,
+      carVariantId: carVariant.id,
+      photoUrl: carVariant.photoUrl,
+    };
   }
 
-  private async generateFreshReport(input: CarVariantInput): Promise<CarReport> {
+  private async generateFreshReport(
+    input: CarVariantInput,
+  ): Promise<CarReport> {
     const contextChunks = await this.contextProvider.getContextChunks(input);
-    const { systemPrompt, userPrompt } = buildCarReportPrompt(input, contextChunks);
+    const { systemPrompt, userPrompt } = buildCarReportPrompt(
+      input,
+      contextChunks,
+    );
 
-    const first = await this.ai.generateStructured({ systemPrompt, userPrompt, responseSchemaName: 'CarReport' });
+    const first = await this.ai.generateStructured({
+      systemPrompt,
+      userPrompt,
+      responseSchemaName: "CarReport",
+    });
 
     try {
       return carReportSchema.parse(JSON.parse(first.raw));
@@ -183,23 +223,30 @@ export class ReportsService {
       // Модель сбилась с формата — редко, но случается. Даём ей одну
       // попытку исправиться, показав, в чём именно была ошибка, вместо
       // того чтобы сразу ронять запрос пользователя.
-      this.logger.warn(`Первый ответ модели не прошёл валидацию (${(err as Error).message}), пробую повторно с уточнением`);
+      this.logger.warn(
+        `Первый ответ модели не прошёл валидацию (${(err as Error).message}), пробую повторно с уточнением`,
+      );
 
       const repairPrompt = `${userPrompt}\n\nТвой предыдущий ответ не прошёл проверку формата: ${(err as Error).message}\nПредыдущий ответ был:\n${first.raw}\n\nИсправь и верни СТРОГО валидный JSON по той же структуре, без пояснений.`;
 
-      const second = await this.ai.generateStructured({ systemPrompt, userPrompt: repairPrompt, responseSchemaName: 'CarReport' });
+      const second = await this.ai.generateStructured({
+        systemPrompt,
+        userPrompt: repairPrompt,
+        responseSchemaName: "CarReport",
+        useWebSearch: false,
+      });
       return carReportSchema.parse(JSON.parse(second.raw));
     }
   }
 
   private blockTypeToKey(type: ReportBlockType): keyof CarReport {
     const map: Record<ReportBlockType, keyof CarReport> = {
-      SPECS: 'specs',
-      PROBLEMS: 'problems',
-      COSTS: 'costs',
-      INSURANCE: 'insurance',
-      PRICE: 'price',
-      CHECKLIST: 'checklistBeforeBuying',
+      SPECS: "specs",
+      PROBLEMS: "problems",
+      COSTS: "costs",
+      INSURANCE: "insurance",
+      PRICE: "price",
+      CHECKLIST: "checklistBeforeBuying",
     };
     return map[type];
   }

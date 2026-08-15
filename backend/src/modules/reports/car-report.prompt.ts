@@ -23,17 +23,20 @@ interface CarVariantInput {
  * копировать целые абзацы с сайтов — это прямое требование в промпте ниже,
  * не только вопрос вкуса, а нужно и для избежания проблем с авторским правом.
  */
-export function buildCarReportPrompt(car: CarVariantInput, contextChunks: string[]) {
+export function buildCarReportPrompt(
+  car: CarVariantInput,
+  contextChunks: string[],
+) {
   const carDescription = [
     car.brand,
     car.model,
-    car.generation ? `(${car.generation})` : '',
-    `${car.yearFrom}${car.yearTo ? `-${car.yearTo}` : '+'}`,
-    car.engine ?? '',
-    car.bodyType ? `кузов: ${car.bodyType}` : '',
+    car.generation ? `(${car.generation})` : "",
+    `${car.yearFrom}${car.yearTo ? `-${car.yearTo}` : "+"}`,
+    car.engine ?? "",
+    car.bodyType ? `кузов: ${car.bodyType}` : "",
   ]
     .filter(Boolean)
-    .join(' ');
+    .join(" ");
 
   const systemPrompt = `Ты — автоэксперт, который готовит структурированные отчёты для покупателей подержанных автомобилей на рынке СНГ.
 У тебя есть доступ к веб-поиску — используй его, чтобы найти актуальные характеристики, реальные отзывы владельцев о типичных проблемах и текущий диапазон цен на вторичном рынке СНГ.
@@ -44,13 +47,14 @@ export function buildCarReportPrompt(car: CarVariantInput, contextChunks: string
 - Не выдумывай точные цифры без опоры на найденное — используй разумные диапазоны (min/max), а не одно число, кроме median в price.
 - Проблемы двигателей указывай отдельно для каждого мотора, а не общо по модели.
 - Если ни в контексте, ни в поиске не нашлось данных по какому-то полю — заполни его наиболее вероятной оценкой на основе общих знаний о классе автомобиля и явно сделай диапазон шире, но никогда не оставляй поле пустым.
-- Пиши на русском языке.`;
+- Пиши на русском языке.
+- ВАЖНО: поля fuelType, severity и partsAvailability — служебные коды на английском, их НЕЛЬЗЯ переводить или заменять русскими словами. Разрешённые значения строго из списка: fuelType — ровно одно из petrol, diesel, hybrid, electric, gas; severity — ровно одно из minor, moderate, critical; partsAvailability — ровно одно из excellent, good, limited, poor. Всё остальное содержимое — на русском, эти три поля — только точным английским словом из списка, без исключений.`;
 
   const contextBlock = contextChunks.length
-    ? `Уже проверенная опора (используй как стартовую точку, при необходимости уточни/обнови поиском, особенно цену):\n${contextChunks.join('\n---\n')}`
-    : 'Стартовых данных по этой машине у нас пока нет — обязательно ищи информацию в интернете сам, не полагайся только на общие знания.';
+    ? `Уже проверенная опора (используй как стартовую точку, при необходимости уточни/обнови поиском, особенно цену):\n${contextChunks.join("\n---\n")}`
+    : "Стартовых данных по этой машине у нас пока нет — обязательно ищи информацию в интернете сам, не полагайся только на общие знания.";
 
-  const userPrompt = `Автомобиль: ${carDescription}\n\n${contextBlock}\n\nСформируй отчёт по следующей структуре (это описание JSON-схемы, верни данные именно в такой форме): specs (engines[]: {name, horsePower, fuelType, transmissionOptions, overhaulMileageKm? {min,max} — средний пробег до капитального ремонта двигателя по опыту владельцев, не указывай для электромоторов}, bodyTypes[], driveTypes[], trims? — названия комплектаций/уровней оснащения, если есть устоявшиеся названия для этого рынка), problems (byEngine[]: {engine, commonIssues[]: {title, description, mileageOrAgeHint?, severity}}), costs (fuelPerYearRub {min,max}, maintenancePerYearRub {min,max}, partsAvailability, partsNote), insurance (osagoPerYearRub {min,max}, kaskoPerYearRub? {min,max}, transportTaxNote), price (marketPriceRub {min,max,median}, asOfDate, depreciationNote?), checklistBeforeBuying[].`;
+  const userPrompt = `Автомобиль: ${carDescription}\n\n${contextBlock}\n\nСформируй отчёт по следующей структуре (это описание JSON-схемы, верни данные именно в такой форме): specs (engines[]: {name, horsePower, fuelType, transmissionOptions, overhaulMileageKm? {min,max} — средний пробег до капитального ремонта двигателя по опыту владельцев, не указывай для электромоторов}, bodyTypes[], driveTypes[], trims? — названия комплектаций/уровней оснащения, если есть устоявшиеся названия для этого рынка), problems (byEngine[]: {engine, commonIssues[]: {title, description, mileageOrAgeHint?, severity}}), costs (fuelPerYearRub {min,max}, maintenancePerYearRub {min,max}, partsAvailability, partsNote), insurance (osagoPerYearRub {min,max} — это грубая ориентировочная вилка, ОСАГО у разных водителей отличается из-за возраста, стажа, региона и истории нарушений, kaskoPerYearRub? {min,max}, transportTaxNote — краткое пояснение по налогу, там же одной фразой упомяни, что ОСАГО показан ориентировочно и зависит от водителя), price (marketPriceRub {min,max,median}, asOfDate, depreciationNote?), checklistBeforeBuying[].`;
 
   return { systemPrompt, userPrompt };
 }
