@@ -525,8 +525,7 @@ export default function HomePage() {
         </p>
         {catalogError && (
           <p style={{ fontSize: 13, color: tokens.red, marginBottom: 16 }}>
-            Не получилось загрузить список марок — проверь, что бэкенд запущен и
-            NEXT_PUBLIC_API_BASE_URL указывает на него.
+            Не получилось загрузить список марок - техническая ошибка.
           </p>
         )}
       </section>
