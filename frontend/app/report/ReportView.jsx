@@ -317,6 +317,11 @@ function ReportContent() {
           style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}
         >
           ИЩЕМ ДАННЫЕ ПО {car.brand.toUpperCase()} {car.model.toUpperCase()}…
+          <h1>
+            Подготавливаем для вас подробную информацию о{" "}
+            {car.brand.toUpperCase()} {car.model.toUpperCase()}, пока всё
+            хорошо, ожидайте примерно 2 минуты...
+          </h1>
         </div>
       </div>,
     );

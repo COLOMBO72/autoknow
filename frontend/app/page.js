@@ -306,14 +306,18 @@ function FreeTextRequest({ router }) {
       >
         <h3
           style={{
-            fontFamily: "'Anton', sans-serif",
+            fontFamily: "'Poppins', sans-serif",
             fontSize: 15,
             letterSpacing: "0.02em",
             margin: "0 0 10px",
             color: tokens.inkSoft,
           }}
         >
-          НЕ НАШЛИ АВТОМОБИЛЬ? НАПИШИТЕ ЗДЕСЬ
+          Введите автомобиль который хотите найти! Пример: Mazda 6 2015
+          <p>
+            После того как нажали кнопку "Проверить" пожалуйта ожидайте, время
+            получения отчёта ~2 минуты
+          </p>
         </h3>
         <form
           onSubmit={handleSubmit}
@@ -546,7 +550,7 @@ export default function HomePage() {
           <ScanCar />
         </div>
 
-        <div
+        {/* <div
           style={{
             background: tokens.surface,
             border: `1px solid ${tokens.line}`,
@@ -685,7 +689,8 @@ export default function HomePage() {
               {submitError}
             </p>
           )}
-        </div>
+        </div> */}
+        <FreeTextRequest router={router} />
       </section>
 
       {Object.keys(catalog).length > 0 && (
@@ -725,8 +730,6 @@ export default function HomePage() {
           </div>
         </section>
       )}
-
-      <FreeTextRequest router={router} />
 
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px" }}>
         <p
