@@ -121,7 +121,20 @@ export class ReportsService {
   }
 
   async getOrGenerateReport(input: CarVariantInput): Promise<ReportResult> {
-    const carVariant = await this.findOrCreateCarVariant(input);
+    // Диапазоны поколений применяем только к простым запросам "марка+модель+год"
+    // без уточнений — если человек явно выбрал двигатель/кузов/поколение,
+    // это уже достаточно специфичный запрос, обрабатываем как раньше.
+    const isBasicQuery = !input.generation && !input.engine && !input.bodyType;
+    let carVariant = isBasicQuery
+      ? await this.findCanonicalVariant(
+          input.brand,
+          input.model,
+          input.yearFrom,
+        )
+      : null;
+    if (!carVariant) {
+      carVariant = await this.findOrCreateCarVariant(input);
+    }
 
     const existingBlocks = await this.prisma.carReportBlock.findMany({
       where: { carVariantId: carVariant.id },
@@ -193,7 +206,15 @@ export class ReportsService {
         }),
       ),
     );
-
+    if (isBasicQuery && report.specs.generationYearFrom) {
+      await this.saveGenerationRange(
+        input.brand,
+        input.model,
+        report.specs.generationYearFrom,
+        report.specs.generationYearTo ?? new Date().getFullYear(),
+        carVariant.id,
+      );
+    }
     return {
       report,
       fromCache: false,
@@ -249,6 +270,51 @@ export class ReportsService {
       CHECKLIST: "checklistBeforeBuying",
     };
     return map[type];
+  }
+
+  /** Ищем, не попадает ли год в уже известный диапазон поколения — если да, используем ту же машину, что и раньше, вместо новой генерации. */
+  private async findCanonicalVariant(
+    brand: string,
+    model: string,
+    year: number,
+  ) {
+    const range = await this.prisma.carGenerationRange.findFirst({
+      where: {
+        brand: brand.trim().toLowerCase(),
+        model: model.trim().toLowerCase(),
+        yearFrom: { lte: year },
+        yearTo: { gte: year },
+      },
+    });
+    if (!range) return null;
+    return this.prisma.carVariant.findUnique({
+      where: { id: range.canonicalCarVariantId },
+    });
+  }
+
+  /** Best-effort — не должно ронять основной запрос, если не получилось сохранить. */
+  private async saveGenerationRange(
+    brand: string,
+    model: string,
+    yearFrom: number,
+    yearTo: number,
+    carVariantId: string,
+  ) {
+    try {
+      await this.prisma.carGenerationRange.create({
+        data: {
+          brand: brand.trim().toLowerCase(),
+          model: model.trim().toLowerCase(),
+          yearFrom,
+          yearTo,
+          canonicalCarVariantId: carVariantId,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Не удалось сохранить диапазон поколения: ${(err as Error).message}`,
+      );
+    }
   }
 
   private assembleReportFromBlocks(blocks: CarReportBlock[]): CarReport {

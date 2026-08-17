@@ -1,9 +1,12 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CAR_SEED_DATASET } from '../../data/car-seed-dataset';
-import { AI_PROVIDER, AiProvider } from '../ai/ai-provider.interface';
-import { Inject } from '@nestjs/common';
-import { buildFreeTextResolutionPrompt, freeTextResolutionSchema } from './free-text-resolution';
+import { Injectable, BadRequestException } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CAR_SEED_DATASET } from "../../data/car-seed-dataset";
+import { AI_PROVIDER, AiProvider } from "../ai/ai-provider.interface";
+import { Inject } from "@nestjs/common";
+import {
+  buildFreeTextResolutionPrompt,
+  freeTextResolutionSchema,
+} from "./free-text-resolution";
 
 interface DiscoveredFrom {
   brand: string;
@@ -41,7 +44,10 @@ export class CatalogService {
    * модель и так вернула в specs, и докладывает в общую копилку по
    * бренду+модели. Так каталог наполняется бесплатно, запрос за запросом.
    */
-  async recordDiscoveredVariants(car: DiscoveredFrom, specs: DiscoveredSpecs): Promise<void> {
+  async recordDiscoveredVariants(
+    car: DiscoveredFrom,
+    specs: DiscoveredSpecs,
+  ): Promise<void> {
     const brand = car.brand.trim().toLowerCase();
     const model = car.model.trim().toLowerCase();
 
@@ -50,27 +56,61 @@ export class CatalogService {
     });
 
     const engineNames = specs.engines.map((e) => e.name).filter(Boolean);
-    const newGeneration = car.generation ? [car.generation.trim().toLowerCase()] : [];
+    const newGeneration = car.generation
+      ? [car.generation.trim().toLowerCase()]
+      : [];
 
-    const knownGenerations = union((existing?.knownGenerations as string[]) ?? [], newGeneration);
-    const knownEngines = union((existing?.knownEngines as string[]) ?? [], engineNames);
-    const knownBodyTypes = union((existing?.knownBodyTypes as string[]) ?? [], specs.bodyTypes ?? []);
+    const knownGenerations = union(
+      (existing?.knownGenerations as string[]) ?? [],
+      newGeneration,
+    );
+    const knownEngines = union(
+      (existing?.knownEngines as string[]) ?? [],
+      engineNames,
+    );
+    const knownBodyTypes = union(
+      (existing?.knownBodyTypes as string[]) ?? [],
+      specs.bodyTypes ?? [],
+    );
 
     const candidateMaxYear = car.yearTo ?? car.yearFrom;
-    const minYearSeen = Math.min(existing?.minYearSeen ?? car.yearFrom, car.yearFrom);
-    const maxYearSeen = Math.max(existing?.maxYearSeen ?? candidateMaxYear, candidateMaxYear);
+    const minYearSeen = Math.min(
+      existing?.minYearSeen ?? car.yearFrom,
+      car.yearFrom,
+    );
+    const maxYearSeen = Math.max(
+      existing?.maxYearSeen ?? candidateMaxYear,
+      candidateMaxYear,
+    );
 
     await this.prisma.carCatalogEntry.upsert({
       where: { brand_model: { brand, model } },
-      update: { knownGenerations, knownEngines, knownBodyTypes, minYearSeen, maxYearSeen },
-      create: { brand, model, knownGenerations, knownEngines, knownBodyTypes, minYearSeen, maxYearSeen },
+      update: {
+        knownGenerations,
+        knownEngines,
+        knownBodyTypes,
+        minYearSeen,
+        maxYearSeen,
+      },
+      create: {
+        brand,
+        model,
+        knownGenerations,
+        knownEngines,
+        knownBodyTypes,
+        minYearSeen,
+        maxYearSeen,
+      },
     });
   }
 
   async getKnownVariants(brand: string, model: string): Promise<KnownVariants> {
     const entry = await this.prisma.carCatalogEntry.findUnique({
       where: {
-        brand_model: { brand: brand.trim().toLowerCase(), model: model.trim().toLowerCase() },
+        brand_model: {
+          brand: brand.trim().toLowerCase(),
+          model: model.trim().toLowerCase(),
+        },
       },
     });
 
@@ -94,7 +134,8 @@ export class CatalogService {
       const brandLabel = capitalize(brandRaw);
       const modelLabel = capitalize(modelRaw);
       if (!result[brandLabel]) result[brandLabel] = [];
-      if (!result[brandLabel].includes(modelLabel)) result[brandLabel].push(modelLabel);
+      if (!result[brandLabel].includes(modelLabel))
+        result[brandLabel].push(modelLabel);
     };
 
     for (const entry of CAR_SEED_DATASET) {
@@ -127,14 +168,23 @@ export class CatalogService {
    * с поиском) генерация отчёта запускается только если это подтверждено —
    * так мусорные запросы не тратят токены и не засоряют базу.
    */
-  async resolveFreeText(text: string): Promise<{ brand: string; model: string; yearFrom: number }> {
+  async resolveFreeText(
+    text: string,
+  ): Promise<{ brand: string; model: string; yearFrom: number }> {
     const trimmed = text.trim();
-    if (!trimmed || trimmed.length > 100) {
-      throw new BadRequestException('Опиши модель короче и понятнее — например "Mazda 6 2015"');
+    if (!trimmed || trimmed.length < 3 || trimmed.length > 100) {
+      throw new BadRequestException(
+        'Опиши модель короче и понятнее — например "Mazda 6 2015"',
+      );
     }
 
     const { systemPrompt, userPrompt } = buildFreeTextResolutionPrompt(trimmed);
-    const result = await this.ai.generateStructured({ systemPrompt, userPrompt, responseSchemaName: 'FreeTextResolution', useWebSearch: false });
+    const result = await this.ai.generateStructured({
+      systemPrompt,
+      userPrompt,
+      responseSchemaName: "FreeTextResolution",
+      useWebSearch: false,
+    });
 
     const parsed = freeTextResolutionSchema.parse(JSON.parse(result.raw));
     if (!parsed.valid) {
@@ -142,7 +192,11 @@ export class CatalogService {
     }
 
     await this.addBrandModel(parsed.brand, parsed.model);
-    return { brand: parsed.brand, model: parsed.model, yearFrom: parsed.yearFrom };
+    return {
+      brand: parsed.brand,
+      model: parsed.model,
+      yearFrom: parsed.yearFrom,
+    };
   }
 }
 

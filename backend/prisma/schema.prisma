@@ -195,3 +195,17 @@ model Comparison {
 
   @@index([userId])
 }
+// "Ярлык": какой диапазон годов относится к уже известному поколению —
+// чтобы Polo 2015 и Polo 2016 не считались разными машинами, если между
+// ними нет реальных отличий.
+model CarGenerationRange {
+  id                  String   @id @default(cuid())
+  brand               String
+  model               String
+  yearFrom            Int
+  yearTo              Int
+  canonicalCarVariantId String
+  createdAt           DateTime @default(now())
+
+  @@index([brand, model])
+}

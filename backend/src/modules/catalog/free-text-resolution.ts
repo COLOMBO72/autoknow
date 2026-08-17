@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const freeTextResolutionSchema = z.discriminatedUnion('valid', [
+export const freeTextResolutionSchema = z.discriminatedUnion("valid", [
   z.object({
     valid: z.literal(true),
     brand: z.string(), // нормализованное название на английском, например "Kia"
@@ -23,7 +23,7 @@ export function buildFreeTextResolutionPrompt(text: string) {
 - Если текст явно бессмысленный, не про автомобиль, слишком расплывчатый (например только марка без модели), или год явно нереалистичен (модель не существовала в этот год/в будущем) — верни {"valid": false, "reason": "краткое объяснение на русском, 1 предложение"}.
 - Если сомневаешься — лучше вернуть valid: false с понятной причиной, чем угадывать.`;
 
-  const userPrompt = `Текст от пользователя: "${text}"`;
+  const userPrompt = `Текст от пользователя: "${text}"\n\nВерни ответ в формате JSON, как описано выше.`;
 
   return { systemPrompt, userPrompt };
 }
