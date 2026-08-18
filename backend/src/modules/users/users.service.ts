@@ -88,6 +88,14 @@ export class UsersService {
     provider: string,
     externalId: string,
   ) {
+    // Идемпотентность: платёжные провайдеры повторяют доставку вебхука при
+    // малейшей сетевой заминке — без этой проверки один платёж зачислялся
+    // бы каждый раз заново.
+    const existing = await this.prisma.transaction.findFirst({
+      where: { externalId, provider },
+    });
+    if (existing) return existing;
+
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.user.update({
         where: { id: userId },
