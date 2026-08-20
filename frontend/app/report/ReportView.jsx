@@ -189,6 +189,60 @@ function carFromParams(sp) {
   return car;
 }
 
+function LoadingState({ brand, model }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const message =
+    elapsed < 15
+      ? "Ищем данные о машине в интернете…"
+      : elapsed < 45
+        ? "Собираем характеристики и историю проблем…"
+        : elapsed < 90
+          ? "Проверяем данные, почти готово…"
+          : "Иногда занимает чуть дольше обычного — спасибо за терпение…";
+
+  return (
+    <div style={{ padding: "80px 0", textAlign: "center" }}>
+      <div
+        className="ak-spinner"
+        style={{
+          width: 40,
+          height: 40,
+          margin: "0 auto 20px",
+          border: `3px solid ${tokens.line}`,
+          borderTopColor: tokens.red,
+          borderRadius: "50%",
+        }}
+      />
+      <div
+        style={{
+          fontFamily: "'Anton', sans-serif",
+          fontSize: 16,
+          marginBottom: 8,
+        }}
+      >
+        {brand.toUpperCase()} {model.toUpperCase()}
+      </div>
+      <div style={{ fontSize: 13.5, color: tokens.inkSoft, marginBottom: 6 }}>
+        {message}
+      </div>
+      <div
+        style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 12,
+          color: tokens.inkSoft,
+        }}
+      >
+        {elapsed} сек
+      </div>
+    </div>
+  );
+}
+
 function ReportContent() {
   const searchParams = useSearchParams();
   const [state, setState] = useState({
@@ -277,6 +331,8 @@ function ReportContent() {
       <style>{`
         .ak-stat { opacity: 0; animation: akFadeUp 0.5s ease forwards; }
         @keyframes akFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .ak-spinner { animation: akSpin 0.8s linear infinite; }
+        @keyframes akSpin { to { transform: rotate(360deg); } }
         .ak-issue { border-left: 3px solid var(--sev-color); background: var(--sev-bg); border-radius: 0 8px 8px 0; padding: 14px 16px; }
         button.ak-cta { transition: transform 0.15s ease, box-shadow 0.2s ease; }
         button.ak-cta:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px ${tokens.redSoft}; }
@@ -305,26 +361,7 @@ function ReportContent() {
   }
 
   if (state.loading) {
-    return shell(
-      <div
-        style={{
-          padding: "60px 0",
-          textAlign: "center",
-          color: tokens.inkSoft,
-        }}
-      >
-        <div
-          style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}
-        >
-          ИЩЕМ ДАННЫЕ ПО {car.brand.toUpperCase()} {car.model.toUpperCase()}…
-          <h1>
-            Подготавливаем для вас подробную информацию о{" "}
-            {car.brand.toUpperCase()} {car.model.toUpperCase()}, пока всё
-            хорошо, ожидайте примерно 2 минуты...
-          </h1>
-        </div>
-      </div>,
-    );
+    return shell(<LoadingState brand={car.brand} model={car.model} />);
   }
 
   if (state.error) {
@@ -424,14 +461,20 @@ function ReportContent() {
             </span>
           ))}
         </div>
+        {r.specs.generationYearFrom && (
+          <p style={{ fontSize: 12.5, color: tokens.amber, margin: "0 0 8px" }}>
+            Поколение: {r.specs.generationYearFrom}–
+            {r.specs.generationYearTo ?? "н.в."}
+            {(car.yearFrom < r.specs.generationYearFrom ||
+              (r.specs.generationYearTo &&
+                car.yearFrom > r.specs.generationYearTo)) &&
+              " — обрати внимание, введённый год чуть за пределами этого диапазона, но это ближайшее подходящее поколение"}
+          </p>
+        )}
         <p style={{ fontSize: 12.5, color: tokens.inkSoft, margin: 0 }}>
           {state.data.fromCache
             ? "Из базы — уже проверено недавно"
             : "Только что собрано живым поиском ИИ"}
-        </p>
-        <p style={{ fontSize: 12.5, color: tokens.inkSoft, margin: 0 }}>
-          *Год указан с даты выпуска производителем этой модели. Ниже приведена
-          вся информация за все поколения этого авто.
         </p>
       </div>
 

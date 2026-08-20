@@ -1,13 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
-import { PrismaService } from '../prisma/prisma.service';
-import { ConcurrencyLimiter } from './concurrency-limiter';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import OpenAI from "openai";
+import { PrismaService } from "../prisma/prisma.service";
+import { ConcurrencyLimiter } from "./concurrency-limiter";
 import {
   AiProvider,
   StructuredGenerationRequest,
   StructuredGenerationResult,
-} from './ai-provider.interface';
+} from "./ai-provider.interface";
 
 /**
  * Теперь primary и fallback — ДВА НЕЗАВИСИМЫХ провайдера (например,
@@ -41,17 +41,23 @@ export class AggregatorAiProvider implements AiProvider {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.primaryBaseUrl = this.config.getOrThrow('AI_BASE_URL');
-    this.primaryClient = new OpenAI({ baseURL: this.primaryBaseUrl, apiKey: this.config.getOrThrow('AI_API_KEY') });
-    this.primaryModel = this.config.getOrThrow('AI_MODEL');
+    this.primaryBaseUrl = this.config.getOrThrow("AI_BASE_URL");
+    this.primaryClient = new OpenAI({
+      baseURL: this.primaryBaseUrl,
+      apiKey: this.config.getOrThrow("AI_API_KEY"),
+    });
+    this.primaryModel = this.config.getOrThrow("AI_MODEL");
 
-    const fallbackBaseUrl = this.config.get('AI_FALLBACK_BASE_URL');
-    const fallbackApiKey = this.config.get('AI_FALLBACK_API_KEY');
-    const fallbackModel = this.config.get('AI_FALLBACK_MODEL');
+    const fallbackBaseUrl = this.config.get("AI_FALLBACK_BASE_URL");
+    const fallbackApiKey = this.config.get("AI_FALLBACK_API_KEY");
+    const fallbackModel = this.config.get("AI_FALLBACK_MODEL");
 
     if (fallbackBaseUrl && fallbackApiKey && fallbackModel) {
       this.fallbackBaseUrl = fallbackBaseUrl;
-      this.fallbackClient = new OpenAI({ baseURL: fallbackBaseUrl, apiKey: fallbackApiKey });
+      this.fallbackClient = new OpenAI({
+        baseURL: fallbackBaseUrl,
+        apiKey: fallbackApiKey,
+      });
       this.fallbackModel = fallbackModel;
     } else {
       this.fallbackBaseUrl = null;
@@ -59,25 +65,83 @@ export class AggregatorAiProvider implements AiProvider {
       this.fallbackModel = null;
     }
 
-    this.limiter = new ConcurrencyLimiter(Number(this.config.get('AI_MAX_CONCURRENT') ?? 8));
+    this.limiter = new ConcurrencyLimiter(
+      Number(this.config.get("AI_MAX_CONCURRENT") ?? 8),
+    );
   }
 
-  async generateStructured(req: StructuredGenerationRequest): Promise<StructuredGenerationResult> {
+  async generateStructured(
+    req: StructuredGenerationRequest,
+  ): Promise<StructuredGenerationResult> {
     return this.limiter.run(() => this.generateStructuredInner(req));
   }
 
-  private async generateStructuredInner(req: StructuredGenerationRequest): Promise<StructuredGenerationResult> {
+  private async generateStructuredInner(
+    req: StructuredGenerationRequest,
+  ): Promise<StructuredGenerationResult> {
     try {
-      return await this.callAndLog('primary', this.primaryClient, this.primaryModel, this.primaryBaseUrl, req);
+      return await this.callAndLog(
+        "primary",
+        this.primaryClient,
+        this.primaryModel,
+        this.primaryBaseUrl,
+        req,
+      );
     } catch (err) {
-      if (!this.fallbackClient) throw err;
-      this.logger.warn(`Primary AI-провайдер недоступен (${(err as Error).message}), пробую fallback`);
-      return await this.callAndLog('fallback', this.fallbackClient, this.fallbackModel!, this.fallbackBaseUrl!, req);
+      this.logger.warn(
+        `Primary не сработал (${(err as Error).message}), пробую ещё раз`,
+      );
+      try {
+        return await this.callAndLog(
+          "primary",
+          this.primaryClient,
+          this.primaryModel,
+          this.primaryBaseUrl,
+          req,
+        );
+      } catch (err2) {
+        const msg = (err2 as Error).message;
+        // "Server tool request failed" и подобное — это про сам инструмент
+        // веб-поиска, не про модель. Третья попытка — без поиска, на
+        // знаниях модели, лучше неидеальный ответ, чем никакого.
+        if (req.useWebSearch !== false && /tool|search/i.test(msg)) {
+          this.logger.warn(
+            "Похоже на сбой инструмента поиска, пробую без веб-поиска",
+          );
+          try {
+            return await this.callAndLog(
+              "primary",
+              this.primaryClient,
+              this.primaryModel,
+              this.primaryBaseUrl,
+              { ...req, useWebSearch: false },
+            );
+          } catch (err3) {
+            if (!this.fallbackClient) throw err3;
+            return await this.callAndLog(
+              "fallback",
+              this.fallbackClient,
+              this.fallbackModel!,
+              this.fallbackBaseUrl!,
+              req,
+            );
+          }
+        }
+        if (!this.fallbackClient) throw err2;
+        this.logger.warn("Primary не сработал дважды, пробую fallback");
+        return await this.callAndLog(
+          "fallback",
+          this.fallbackClient,
+          this.fallbackModel!,
+          this.fallbackBaseUrl!,
+          req,
+        );
+      }
     }
   }
 
   private async callAndLog(
-    provider: 'primary' | 'fallback',
+    provider: "primary" | "fallback",
     client: OpenAI,
     model: string,
     baseUrl: string,
@@ -86,10 +150,24 @@ export class AggregatorAiProvider implements AiProvider {
     const startedAt = Date.now();
     try {
       const result = await this.callModel(client, model, req);
-      await this.logCall(provider, baseUrl, model, true, null, Date.now() - startedAt);
+      await this.logCall(
+        provider,
+        baseUrl,
+        model,
+        true,
+        null,
+        Date.now() - startedAt,
+      );
       return result;
     } catch (err) {
-      await this.logCall(provider, baseUrl, model, false, (err as Error).message, Date.now() - startedAt);
+      await this.logCall(
+        provider,
+        baseUrl,
+        model,
+        false,
+        (err as Error).message,
+        Date.now() - startedAt,
+      );
       throw err;
     }
   }
@@ -108,7 +186,9 @@ export class AggregatorAiProvider implements AiProvider {
         data: { provider, baseUrl, model, success, errorMessage, latencyMs },
       });
     } catch (err) {
-      this.logger.warn(`Не удалось записать AiCallLog: ${(err as Error).message}`);
+      this.logger.warn(
+        `Не удалось записать AiCallLog: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -121,12 +201,15 @@ export class AggregatorAiProvider implements AiProvider {
       model,
       instructions: req.systemPrompt,
       input: req.userPrompt,
-      tools: req.useWebSearch === false ? undefined : [{ type: 'web_search_preview' }],
-      text: { format: { type: 'json_object' } },
+      tools:
+        req.useWebSearch === false
+          ? undefined
+          : [{ type: "web_search_preview" }],
+      text: { format: { type: "json_object" } },
       temperature: 0.2,
     });
 
-    const raw = response.output_text ?? '';
+    const raw = response.output_text ?? "";
     if (!raw) {
       throw new Error(`Пустой ответ от модели ${model}`);
     }

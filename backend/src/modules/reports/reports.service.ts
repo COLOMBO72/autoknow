@@ -30,7 +30,7 @@ const ALL_BLOCK_TYPES = Object.values(ReportBlockType);
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
-  private readonly inFlightGenerations = new Map<string, Promise<CarReport>>();
+  private readonly inFlightRequests = new Map<string, Promise<ReportResult>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -121,9 +121,25 @@ export class ReportsService {
   }
 
   async getOrGenerateReport(input: CarVariantInput): Promise<ReportResult> {
-    // Диапазоны поколений применяем только к простым запросам "марка+модель+год"
-    // без уточнений — если человек явно выбрал двигатель/кузов/поколение,
-    // это уже достаточно специфичный запрос, обрабатываем как раньше.
+    // Ключ считается СИНХРОННО, без единого await — резервируем место в
+    // очереди до того, как второй параллельный запрос вообще успеет
+    // проверить, что уже что-то в процессе. Раньше проверка была после
+    // обращения к БД за carVariant, и там оставалось окно для гонки.
+    const dedupKey = JSON.stringify(this.normalize(input));
+
+    const existing = this.inFlightRequests.get(dedupKey);
+    if (existing) return existing;
+
+    const promise = this.getOrGenerateReportInner(input).finally(() => {
+      this.inFlightRequests.delete(dedupKey);
+    });
+    this.inFlightRequests.set(dedupKey, promise);
+    return promise;
+  }
+
+  private async getOrGenerateReportInner(
+    input: CarVariantInput,
+  ): Promise<ReportResult> {
     const isBasicQuery = !input.generation && !input.engine && !input.bodyType;
     let carVariant = isBasicQuery
       ? await this.findCanonicalVariant(
@@ -162,26 +178,8 @@ export class ReportsService {
     this.logger.log(
       `Кэш-промах/устарел для carVariant ${carVariant.id}, генерирую через AI`,
     );
+    const report = await this.generateFreshReport(input);
 
-    // Если на эту же машину уже летит другой запрос (двойной клик, повтор
-    // эффекта React в dev-режиме, две вкладки) — ждём его результат вместо
-    // того чтобы запускать вторую платную генерацию параллельно.
-    let report: CarReport;
-    const inFlight = this.inFlightGenerations.get(carVariant.id);
-    if (inFlight) {
-      report = await inFlight;
-    } else {
-      const promise = this.generateFreshReport(input);
-      this.inFlightGenerations.set(carVariant.id, promise);
-      try {
-        report = await promise;
-      } finally {
-        this.inFlightGenerations.delete(carVariant.id);
-      }
-    }
-
-    // Best-effort: копилка каталога не должна ронять основной запрос,
-    // если тут что-то пойдёт не так — просто логируем и едем дальше.
     this.catalog.recordDiscoveredVariants(input, report.specs).catch((err) => {
       this.logger.warn(
         `Не удалось обновить каталог для ${input.brand} ${input.model}: ${(err as Error).message}`,
@@ -206,6 +204,7 @@ export class ReportsService {
         }),
       ),
     );
+
     if (isBasicQuery && report.specs.generationYearFrom) {
       await this.saveGenerationRange(
         input.brand,
@@ -215,6 +214,7 @@ export class ReportsService {
         carVariant.id,
       );
     }
+
     return {
       report,
       fromCache: false,

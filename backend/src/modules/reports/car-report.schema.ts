@@ -16,6 +16,7 @@ export const specsSchema = z.object({
       overhaulMileageKm: z
         .object({ min: z.number(), max: z.number() })
         .optional(), // средний пробег до капремонта; необязательно — для электро и совсем новых моторов данных может не быть
+      fuelConsumptionL100km: z.coerce.number().optional(), // смешанный цикл, л/100км
     }),
   ),
   bodyTypes: z.array(z.string()),
