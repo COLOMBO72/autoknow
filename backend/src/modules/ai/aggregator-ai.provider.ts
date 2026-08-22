@@ -9,19 +9,21 @@ import {
   StructuredGenerationResult,
 } from "./ai-provider.interface";
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Теперь primary и fallback — ДВА НЕЗАВИСИМЫХ провайдера (например,
- * AITunnel и OpenRouter), не просто вторая модель у того же агрегатора,
- * как было раньше. Если у AITunnel авария целиком (не только конкретная
- * модель) — fallback всё равно отработает, потому что бьёт совсем в другой
- * base_url со своим ключом.
+ * primary и fallback — два независимых провайдера (base_url + ключ +
+ * модель каждый), не просто вторая модель у того же агрегатора. Каждый
+ * вызов логируется в AiCallLog (видно в админке, вкладка "здоровье AI").
  *
- * Каждый вызов (успешный и нет) пишется в AiCallLog — на этом строится
- * админ-панель "здоровье AI" и решение "пора ли переезжать на другого
- * агрегатора совсем".
- *
- * Fallback-провайдер настраивается опционально: если AI_FALLBACK_* не
- * заданы в .env — просто нет второй попытки, только primary.
+ * Порядок попыток в generateStructuredInner:
+ * 1. primary
+ * 2. primary ещё раз (через паузу — часто разовая заминка/лимит запросов)
+ * 3. если ошибка похожа на сбой именно инструмента веб-поиска (а не
+ *    самой модели) — пробуем primary БЕЗ поиска, на одних знаниях модели
+ * 4. fallback (если настроен) — как последний рубеж
  */
 @Injectable()
 export class AggregatorAiProvider implements AiProvider {
@@ -91,6 +93,8 @@ export class AggregatorAiProvider implements AiProvider {
       this.logger.warn(
         `Primary не сработал (${(err as Error).message}), пробую ещё раз`,
       );
+      await delay(2000);
+
       try {
         return await this.callAndLog(
           "primary",
@@ -101,23 +105,28 @@ export class AggregatorAiProvider implements AiProvider {
         );
       } catch (err2) {
         const msg = (err2 as Error).message;
-        // "Server tool request failed" и подобное — это про сам инструмент
-        // веб-поиска, не про модель. Третья попытка — без поиска, на
-        // знаниях модели, лучше неидеальный ответ, чем никакого.
-        if (req.useWebSearch !== false && /tool|search/i.test(msg)) {
+        const looksLikeToolFailure =
+          req.useWebSearch !== false && /tool|search/i.test(msg);
+
+        if (looksLikeToolFailure) {
           this.logger.warn(
             "Похоже на сбой инструмента поиска, пробую без веб-поиска",
           );
+          await delay(2000);
           try {
             return await this.callAndLog(
               "primary",
               this.primaryClient,
               this.primaryModel,
               this.primaryBaseUrl,
-              { ...req, useWebSearch: false },
+              {
+                ...req,
+                useWebSearch: false,
+              },
             );
           } catch (err3) {
             if (!this.fallbackClient) throw err3;
+            this.logger.warn("Не получилось и без поиска, пробую fallback");
             return await this.callAndLog(
               "fallback",
               this.fallbackClient,
@@ -127,6 +136,7 @@ export class AggregatorAiProvider implements AiProvider {
             );
           }
         }
+
         if (!this.fallbackClient) throw err2;
         this.logger.warn("Primary не сработал дважды, пробую fallback");
         return await this.callAndLog(
@@ -180,7 +190,6 @@ export class AggregatorAiProvider implements AiProvider {
     errorMessage: string | null,
     latencyMs: number,
   ) {
-    // Best-effort — если лог не записался, это не должно ронять сам запрос.
     try {
       await this.prisma.aiCallLog.create({
         data: { provider, baseUrl, model, success, errorMessage, latencyMs },

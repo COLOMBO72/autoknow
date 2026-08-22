@@ -1,33 +1,48 @@
 import { z } from "zod";
 
 /**
- * Схема одного блока отчёта. Модель должна вернуть JSON строго такой формы —
- * это и есть response_schema, которую мы описываем словами в промпте
- * (см. prompts/car-report.prompt.ts) и проверяем здесь после парсинга.
+ * looseNumber — модель иногда присылает число как строку ("150") или даже
+ * как вложенный объект ({value: 150} и подобное) вместо простого number.
+ * Вместо того чтобы ронять валидацию и тратить деньги на повторный вызов
+ * из-за формата — сами вытаскиваем число из того, что пришло.
  */
+const looseNumber = z.preprocess((val) => {
+  if (typeof val === "number") return val;
+  if (typeof val === "string") {
+    const n = parseFloat(val.replace(",", ".").replace(/[^\d.-]/g, ""));
+    return Number.isNaN(n) ? val : n;
+  }
+  if (val && typeof val === "object") {
+    const obj = val as Record<string, unknown>;
+    if (typeof obj.min === "number" && typeof obj.max === "number")
+      return (obj.min + obj.max) / 2;
+    const firstNumber = Object.values(obj).find((v) => typeof v === "number");
+    if (typeof firstNumber === "number") return firstNumber;
+  }
+  return val;
+}, z.number());
 
 export const specsSchema = z.object({
   engines: z.array(
     z.object({
       name: z.string(), // "1.6 MPI"
-      horsePower: z.number(),
+      horsePower: looseNumber,
       fuelType: z.enum(["petrol", "diesel", "hybrid", "electric", "gas"]),
       transmissionOptions: z.array(z.string()),
       overhaulMileageKm: z
-        .object({ min: z.number(), max: z.number() })
-        .optional(), // средний пробег до капремонта; необязательно — для электро и совсем новых моторов данных может не быть
-      fuelConsumptionL100km: z.coerce.number().optional(), // смешанный цикл, л/100км
+        .object({ min: looseNumber, max: looseNumber })
+        .optional(),
+      fuelConsumptionL100km: looseNumber.optional(),
     }),
   ),
   bodyTypes: z.array(z.string()),
   driveTypes: z.array(z.string()),
-  generationYearFrom: z.coerce.number().optional(), // с какого года это поколение/рестайлинг
-  generationYearTo: z.coerce.number().nullable().optional(), // по какой год, null = выпускается до сих пор
-  trims: z.array(z.string()).optional(), // названия комплектаций, например "Classic", "Comfort", "Prestige"
+  trims: z.array(z.string()).optional(),
+  generationYearFrom: looseNumber.optional(),
+  generationYearTo: looseNumber.nullable().optional(),
 });
 
 export const problemsSchema = z.object({
-  // проблемы привязаны к конкретному мотору, не к модели вообще
   byEngine: z.array(
     z.object({
       engine: z.string(),
@@ -35,7 +50,7 @@ export const problemsSchema = z.object({
         z.object({
           title: z.string(),
           description: z.string(),
-          mileageOrAgeHint: z.string().optional(), // "обычно после 150 000 км"
+          mileageOrAgeHint: z.string().optional(),
           severity: z.enum(["minor", "moderate", "critical"]),
         }),
       ),
@@ -44,29 +59,29 @@ export const problemsSchema = z.object({
 });
 
 export const costsSchema = z.object({
-  fuelPerYearRub: z.object({ min: z.number(), max: z.number() }),
-  maintenancePerYearRub: z.object({ min: z.number(), max: z.number() }),
+  fuelPerYearRub: z.object({ min: looseNumber, max: looseNumber }),
+  maintenancePerYearRub: z.object({ min: looseNumber, max: looseNumber }),
   partsAvailability: z.enum(["excellent", "good", "limited", "poor"]),
-  partsNote: z.string(), // например: "оригинал дорог, аналоги доступны почти на всё"
+  partsNote: z.string(),
 });
 
 export const insuranceSchema = z.object({
-  osagoPerYearRub: z.object({ min: z.number(), max: z.number() }),
-  kaskoPerYearRub: z.object({ min: z.number(), max: z.number() }).optional(),
-  transportTaxNote: z.string(), // зависит от региона и л.с., даём пояснение, не точную цифру
+  osagoPerYearRub: z.object({ min: looseNumber, max: looseNumber }),
+  kaskoPerYearRub: z.object({ min: looseNumber, max: looseNumber }).optional(),
+  transportTaxNote: z.string(),
 });
 
 export const priceSchema = z.object({
   marketPriceRub: z.object({
-    min: z.number(),
-    max: z.number(),
-    median: z.number(),
+    min: looseNumber,
+    max: looseNumber,
+    median: looseNumber,
   }),
-  asOfDate: z.string(), // дата, на которую актуальна цена — обязательно, блок короткоживущий
+  asOfDate: z.string(),
   depreciationNote: z.string().optional(),
 });
 
-export const checklistSchema = z.array(z.string()); // чек-лист для осмотра при покупке
+export const checklistSchema = z.array(z.string());
 
 export const carReportSchema = z.object({
   specs: specsSchema,
